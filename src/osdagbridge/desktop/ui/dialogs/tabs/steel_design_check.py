@@ -47,6 +47,24 @@ _LINE_HEIGHT_FRAC   = 70
 
 _FONTSIZE_SIMPLE = 16
 _FONTSIZE_FRAC   = 66
+
+# Deflection: x in "delta <= L/x" depends on the governing load case
+# (IRC 22:2015 Cl.604.3.2). Keyed by check_id from designer._add_check.
+_DEFL_X     = {13: 800,           14: 600,            18: 600}
+_DEFL_LABEL = {13: r"live\ load", 14: r"total\ load", 18: r"dead\ load"}
+
+
+def _deflection_eq_lines(check_id: int | None = None) -> tuple[tuple[str, int, bool], ...]:
+    """Deflection equations with x resolved for the governing check (or a neutral placeholder)."""
+    x = _DEFL_X.get(check_id)
+    caption = (rf"$\mathrm{{(}}x = {x},\ \mathrm{{{_DEFL_LABEL[check_id]}}}\mathrm{{)}}$"
+               if x else r"$\mathrm{(x\ per\ load\ case)}$")
+    return (
+        (r"$\delta \leq L / x$",                        80, False),
+        (caption,                                        190, False),
+        (r"$\mathrm{(IRC\ 22:2015\ Cl.604.3.2)}$",       200, False),
+    )
+
 # (check_key) → tuple of (latex_string, display_width_px, is_frac)
 # is_frac=True for equations containing \frac or complex \sqrt
 _EQ_LATEX: dict[str, tuple[tuple[str, int, bool], ...]] = {
@@ -78,10 +96,7 @@ _EQ_LATEX: dict[str, tuple[tuple[str, int, bool], ...]] = {
         (r"$\sigma = M_u / Z$",                                      80, False),
         (r"$\sigma \leq f_y / \gamma_{m0}$",                        100, False),
     ),
-    KEY_CHECK_DEFLECTION: (
-        (r"$\delta \leq L / x$",                                     80, False),
-        (r"$\mathrm{(Default}\ x = 600\mathrm{)}$",                 160, False),
-    ),
+    KEY_CHECK_DEFLECTION: _deflection_eq_lines(),
 }
 def _get_shear_latex(governing_method: str):
     """
@@ -671,6 +686,8 @@ class SteelDesignCheckTab(QWidget):
                     else:
                         m = re.search(r"beta=([\d.]+)", note)
                         entry["is_high_shear"] = bool(m) and float(m.group(1)) > 0
+                if key == KEY_CHECK_DEFLECTION:
+                    entry["check_id"] = worst.check_id
                 results_by_key[key] = entry
             except Exception:
                 logger.exception("Failed to load checks %s for key %s", ids, key)
@@ -700,6 +717,10 @@ class SteelDesignCheckTab(QWidget):
             eq_view = self.check_eq_views.get(key)
             if eq_view is not None:
                 eq_view.set_lines(_flexure_eq_lines(res.get("pna_location", "")))
+        if key == KEY_CHECK_DEFLECTION:
+            eq_view = self.check_eq_views.get(key)
+            if eq_view is not None:
+                eq_view.set_lines(_deflection_eq_lines(res.get("check_id")))
         if key == KEY_CHECK_SHEAR:
     
             governing_method = res.get("governing_method")
@@ -782,6 +803,9 @@ class SteelDesignCheckTab(QWidget):
                     cap_pfx = "<i>V<sub>cr</sub></i>"
                 elif method == "tension_field":
                     cap_pfx = "<i>V<sub>tf</sub></i>"
+
+            if key == KEY_CHECK_DEFLECTION:
+                cap_pfx = f"<i>L / {_DEFL_X.get(res.get('check_id'), 'x')}</i>"
 
             val_text = (
                 f"{dem_pfx} = {demand:.2f}{unit_str}<br>"
