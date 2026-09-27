@@ -9,8 +9,8 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QTableWidget, QTableWidgetItem, QHeaderView, QCheckBox, QSizePolicy,
 )
-from osdagbridge.core.utils.codes.irc6_2017 import IRC6_2017
-from osdagbridge.core.utils.common import *
+from osdagbridge.core.bridge_types.plate_girder.load_combinations import default_load_combination_entries
+
 class LoadCombinationWidget(QWidget):
     """
     Self-contained widget — table + Add/Modify/Delete buttons.
@@ -29,18 +29,6 @@ class LoadCombinationWidget(QWidget):
         self._owner    = owner
         self._ai       = ai
         self._data: list = []
-
-        try:
-            self._irc6_data = IRC6_2017.uls_load_combinations()
-        except Exception as e:
-            print("Error loading IRC6 ULS combinations:", e)
-            self._irc6_data = []
-
-        try:
-            self._irc6_sls_data = IRC6_2017.sls_load_combinations()
-        except Exception as e:
-            print("Error loading IRC6 SLS combinations:", e)
-            self._irc6_sls_data = []    
 
         self.setObjectName(field_id)
         self._build_ui()
@@ -207,209 +195,34 @@ class LoadCombinationWidget(QWidget):
             data.pop(row)
             self._save_data(data)  
 
-    # ── Load abbreviation map ───────────────────────────────────────────────
-    _ABBREV = {
-        'dead_load':          'DL',
-        'surfacing':          'DW',
-        'live_load':          'LL',
-        'wind_load':          'WL',
-        'thermal_load':       'TL',
-        'seismic':            'EL',
-        'vehicle_collision':  'VC',
-        'barge_impact':       'BI',
-        'floating_bodies':    'FB',
-    }
-
-    # Combination → KEY maps live in core (single source of truth shared with the
-    # analyser's combination builder); aliased here for brevity.
-    _ULS_CASE_KEYS = IRC6_2017.ULS_COMBINATION_KEYS
-    _SLS_CASE_KEYS = IRC6_2017.SLS_COMBINATION_KEYS
-
     def _populate_default_combinations(self):
         """
-        Expand each IRC6 ULS combination into adding/relieving cases,
-        collapse to single case when adding == relieving for all permanent loads.
+        Populate the table from the shared IRC6 combination expansion
+        (single source of truth in ``default_load_combination_entries``,
+        also used by the backend to build the results table).
         """
         self.table.setRowCount(0)
-        self._data = []
+        self._data = [dict(e) for e in default_load_combination_entries()]
 
-        basic_count = 1
-        accidental_count = 1
-        seismic_count = 1
+        for entry in self._data:
+            row = self.table.rowCount()
+            self.table.insertRow(row)
 
-        #ULS Combination------------------------------------
-        for combo in self._irc6_data:
-            ctype   = combo['combination_type']
-            factors = combo['factors']
-            name    = combo['name']
+            name_item = QTableWidgetItem(entry['name'])
+            name_item.setFlags(name_item.flags() & ~Qt.ItemIsEditable)
+            self.table.setItem(row, 0, name_item)
 
-            dl  = factors.get('dead_load',  {})
-            dw  = factors.get('surfacing',  {})
-
-            dl_add = dl.get('adding',   dl) if isinstance(dl, dict) else dl
-            dl_rel = dl.get('relieving', dl) if isinstance(dl, dict) else dl
-            dw_add = dw.get('adding',   dw) if isinstance(dw, dict) else dw
-            dw_rel = dw.get('relieving', dw) if isinstance(dw, dict) else dw
-
-            same_permanent = (dl_add == dl_rel and dw_add == dw_rel)
-
-            # Determine leading load / condition for key lookup
-            if ctype == 'basic':
-                # name format: "Basic — live_load leading"
-                leading = name.split('—')[1].strip().replace(' leading', '')
-                acc_load = None
-            elif ctype == 'accidental':
-                # name format: "Accidental (vehicle_collision) — live_load leading"
-                import re
-                acc_load = re.search(r'\((.+?)\)', name).group(1)
-                leading  = name.split('—')[1].strip().replace(' leading', '')
-            else:  # seismic
-                # name format: "Seismic (service) — all variable loads accompanying"
-                import re
-                leading  = re.search(r'\((.+?)\)', name).group(1)
-                acc_load = None
-
-            directions = ['adding'] if same_permanent else ['adding', 'relieving']
-
-            for direction in directions:
-                dl_f = dl_add if direction == 'adding' else dl_rel
-                dw_f = dw_add if direction == 'adding' else dw_rel
-
-                # Build expression string
-                parts = [f"{dl_f}DL", f"{dw_f}DW"]
-                for load in ['live_load', 'wind_load', 'thermal_load',
-                            'seismic', 'vehicle_collision', 'barge_impact', 'floating_bodies']:
-                    val = factors.get(load)
-                    if val is not None:
-                        parts.append(f"{val}{self._ABBREV.get(load, load)}")
-
-                expr = ' + '.join(parts)
-
-                if ctype == "basic":
-                    combo_name = f"Basic_{basic_count}"
-                    basic_count += 1
-
-                elif ctype == "accidental":
-                    combo_name = f"Accidental_{accidental_count}"
-                    accidental_count += 1
-
-                elif ctype == "seismic":
-                    combo_name = f"Seismic_{seismic_count}"
-                    seismic_count += 1
-
-                display = f"{combo_name} : {expr}"
-
-                # Look up key
-                key = self._ULS_CASE_KEYS.get((ctype, leading, acc_load, direction), '')
-
-                entry = {
-                    'name':     display,
-                    'included': True,
-                    'key':      key,
-                    'expr':     expr,
-                }
-                self._data.append(entry)
-
-                row = self.table.rowCount()
-                self.table.insertRow(row)
-
-                name_item = QTableWidgetItem(display)
-                name_item.setFlags(name_item.flags() & ~Qt.ItemIsEditable)
-                self.table.setItem(row, 0, name_item)
-
-                cb_container = QWidget()
-                cb_layout = QHBoxLayout(cb_container)
-                cb_layout.setContentsMargins(0, 0, 0, 0)
-                cb_layout.setAlignment(Qt.AlignCenter)
-                cb = QCheckBox()
-                cb.setChecked(True)
-                cb.stateChanged.connect(
-                    lambda state, i=row: self._on_included_changed(i, bool(state))
-                )
-                cb_layout.addWidget(cb)
-                self.table.setCellWidget(row, 1, cb_container)
-
-        rare_count = 1
-        frequent_count = 1
-        qp_count = 1
-
-        # ── SLS combinations ───────────────────────────────────────────────
-        for combo in self._irc6_sls_data:
-            ctype   = combo['combination_type']
-            factors = combo['factors']
-            name    = combo['name']
-
-            dl  = factors.get('dead_load', 1.0)
-            dw  = factors.get('surfacing', {})
-
-            dl_f   = dl if not isinstance(dl, dict) else dl.get('adding', 1.0)
-            dw_add = dw.get('adding',    dw) if isinstance(dw, dict) else dw
-            dw_rel = dw.get('relieving', dw) if isinstance(dw, dict) else dw
-
-            same_surf = (dw_add == dw_rel)
-
-            # Determine leading load for key lookup
-            if ctype == 'quasi_permanent':
-                leading  = None
-                directions = ['adding'] if same_surf else ['adding', 'relieving']
-            else:
-                # name format: "SLS Rare — live_load leading"
-                leading = name.split('—')[1].strip().replace(' leading', '')
-                directions = ['adding'] if same_surf else ['adding', 'relieving']
-
-            for direction in directions:
-                dw_f = dw_add if direction == 'adding' else dw_rel
-
-                parts = [f"{dl_f}DL", f"{dw_f}DW"]
-                for load in ['live_load', 'wind_load', 'thermal_load']:
-                    val = factors.get(load)
-                    if val is not None and val != 0:
-                        parts.append(f"{val}{self._ABBREV.get(load, load)}")
-
-                expr = ' + '.join(parts)
-
-                if ctype == "rare":
-                    combo_name = f"Rare_{rare_count}"
-                    rare_count += 1
-
-                elif ctype == "frequent":
-                    combo_name = f"Frequent_{frequent_count}"
-                    frequent_count += 1
-
-                elif ctype == "quasi_permanent":
-                    combo_name = f"Quasi-Permanent_{qp_count}"
-                    qp_count += 1
-
-                display = f"{combo_name} : {expr}"
-
-                key = self._SLS_CASE_KEYS.get((ctype, leading, direction), '')
-
-                entry = {
-                    'name':     display,
-                    'included': True,
-                    'key':      key,
-                    'expr':     expr,
-                }
-                self._data.append(entry)
-
-                row = self.table.rowCount()
-                self.table.insertRow(row)
-
-                name_item = QTableWidgetItem(display)
-                name_item.setFlags(name_item.flags() & ~Qt.ItemIsEditable)
-                self.table.setItem(row, 0, name_item)
-
-                cb_container = QWidget()
-                cb_layout = QHBoxLayout(cb_container)
-                cb_layout.setContentsMargins(0, 0, 0, 0)
-                cb_layout.setAlignment(Qt.AlignCenter)
-                cb = QCheckBox()
-                cb.setChecked(True)
-                cb.stateChanged.connect(
-                    lambda state, i=row: self._on_included_changed(i, bool(state))
-                )
-                cb_layout.addWidget(cb)
-                self.table.setCellWidget(row, 1, cb_container)
+            cb_container = QWidget()
+            cb_layout = QHBoxLayout(cb_container)
+            cb_layout.setContentsMargins(0, 0, 0, 0)
+            cb_layout.setAlignment(Qt.AlignCenter)
+            cb = QCheckBox()
+            cb.setChecked(bool(entry.get('included', True)))
+            cb.stateChanged.connect(
+                lambda state, i=row: self._on_included_changed(i, bool(state))
+            )
+            cb_layout.addWidget(cb)
+            self.table.setCellWidget(row, 1, cb_container)
 
         self.table.setVisible(True)
         self._adjust_table_height()   
