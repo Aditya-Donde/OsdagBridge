@@ -601,7 +601,7 @@ class OutputDock(QWidget):
             return False
         return True
 
-    def _on_report_clicked(self):
+    def _capture_data(self):
         """
         Resolve Qt-side objects then delegate entirely to
         template_page.open_report_dialog(). OutputDock owns
@@ -766,8 +766,13 @@ class OutputDock(QWidget):
                 'figure_data': figure_data,
             }
             # figure_data local var goes out of scope here; cad_generator holds the only ref
+            
+        return cad_generator
 
+    def _on_report_clicked(self):
+        """Open the report dialog, passing the CAD generator and captured figures."""
         # Find dialog host and trigger
+        cad_generator = self._capture_data()
         main_window = self.parent
         main_window.open_report_dialog(cad_generator=cad_generator)
 

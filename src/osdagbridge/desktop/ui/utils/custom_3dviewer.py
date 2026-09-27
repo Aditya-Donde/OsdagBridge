@@ -16,7 +16,6 @@ from navcube.connectors.occ import OCCNavCubeSync
 
 from osdagbridge.desktop.ui.utils.cad_safety import CADSafetyGuard
 
-
 # =============================================================================
 # OCC-FREE AXIS TRIAD OVERLAY  (drawing is pure QPainter; camera sync via poll)
 # =============================================================================
