@@ -32,6 +32,8 @@ from .ui.components.dialogs.settings import SettingsDialog
 
 from .data.database.database_config import PROJECT_PATH, ID, update_project_path, delete_project_record
 from .data.database.database_config import get_module_function
+from osdagbridge.core.utils.common import KEY_MODULE_PLATE_GIRDER
+from .ui.utils.common import get_documents_folder, KEY_MODULE
 
 # Backend Class Imports
 import platform
@@ -1451,7 +1453,7 @@ class MainWindow(QMainWindow):
     # If osi_path=None -> it triggers Load Osi else trigger open recent project
     def common_osi_load(self, osi_path=None, id=None):
         if osi_path is None:
-            osi_path, _ = QFileDialog.getOpenFileName(self, "Open Design", os.path.join(str(' ')),
+            osi_path, _ = QFileDialog.getOpenFileName(self, "Open Design", get_documents_folder(),
                                                   "InputFiles(*.osi)")
             
         else:
@@ -1528,10 +1530,20 @@ class MainWindow(QMainWindow):
                 return
             func = getattr(self, func)
             func()
-            # Set variables in template page because it is opened project
-            self.main_widget_instance.setDictToUserInputs(uiObj)
-            self.main_widget_instance.project_id = id
-            self.main_widget_instance.save_state = True
+            # Set variables in template page because it is opened project.
+            # Deferred: bridge modules build on the next event-loop pass, so
+            # main_widget_instance isn't the module widget yet at this point.
+            def _apply_loaded_inputs():
+                inst = self.main_widget_instance
+                if module == KEY_MODULE_PLATE_GIRDER:
+                    if not inst.load_osi_from_path(osi_path, notify=False):
+                        return
+                else:
+                    inst.setDictToUserInputs(uiObj)
+                inst.project_id = id
+                inst.save_state = True
+
+            QTimer.singleShot(0, _apply_loaded_inputs)
 
         except IOError:
             CustomMessageBox(
