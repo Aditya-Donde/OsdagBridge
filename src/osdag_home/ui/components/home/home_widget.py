@@ -19,6 +19,7 @@ from ..dialogs.custom_messagebox import CustomMessageBox, MessageBoxType
 from .search_overlay import SearchOverlay
 from ....data.database.database_config import *
 from ....data.ui_data import Data
+from ...utils.common import get_documents_folder
 
 # --- SVG Widget with Theme Support ---
 class ThemedSvgWidget(QSvgWidget):
@@ -191,7 +192,7 @@ class ProjectItem(QFrame):
         parent_navbar = MODULE_MAP.get(key)[3]
         # Replacing since these icons are in recents folder
         icon_path = Data().NAVBAR_ICONS.get(parent_navbar)[0].replace("nav_icons", "recents")
-        number_label.setPixmap(QIcon(icon_path).pixmap(QSize(24, 24)))
+        number_label.setPixmap(QIcon(icon_path).pixmap(QSize(20, 20)))
 
         info_layout.addWidget(number_label)
 
@@ -647,7 +648,7 @@ class HomeWidget(QWidget):
         save_path, _ = QFileDialog.getSaveFileName(
             self,
             "Save OSI File",
-            default_name,
+            os.path.join(get_documents_folder(), default_name),
             "Osdag Project Files (*.osi);;All Files (*)"
         )
         if save_path:
@@ -694,55 +695,26 @@ class HomeWidget(QWidget):
 
         def run(self):
             try:
-                # 1. Check if tex exist
-                tex_path = os.path.join("osdag_home", "data", "reports", f"file_{self.record[ID]}", "report.tex")
-                if not os.path.isfile(tex_path):
-                    self.error.emit(f"LaTeX file not found for this project:\n{tex_path}")
+                pdf_path = os.path.join(
+                    get_documents_folder(), "osdag_home", "data", "reports", f"file_{self.record[ID]}", "report.pdf"
+                )
+                if not os.path.isfile(pdf_path):
+                    self.error.emit(f"No saved report found for this project:\n{pdf_path}")
                     return
 
-                # 2. Copy images
-                base_dir = os.path.join("ResourceFiles", "images")
-                os.makedirs(base_dir, exist_ok=True)
+                shutil.copy2(pdf_path, self.target_pdf)
+                self.success.emit(self.target_pdf)
 
-                report_dir = os.path.join("osdag_home", "data", "reports", f"file_{self.record[ID]}")
-                required_images = ["3d.png", "front.png", "top.png", "side.png"]
-
-                for img in required_images:
-                    src = os.path.join(report_dir, img)
-                    dst = os.path.join(base_dir, img)
-                    if os.path.isfile(src):
-                        shutil.copy2(src, dst)
-
-                # 3. Run pdflatex
-                from osdag_core.design_report.reportGenerator_latex import get_latex_executable
-                latex_exec = get_latex_executable()
-                result = subprocess.run(
-                    [latex_exec, "-interaction=nonstopmode", os.path.basename(tex_path)],
-                    cwd=os.path.dirname(tex_path),
-                    capture_output=True,
-                    text=True,
-                    timeout=60
-                )
-
-                # 4. Copy PDF
-                generated_pdf = os.path.join(os.path.dirname(tex_path), "report.pdf")
-                if os.path.isfile(generated_pdf):
-                    shutil.copy2(generated_pdf, self.target_pdf)
-                    self.success.emit(self.target_pdf)
-                else:
-                    self.error.emit("PDF generation failed. report.pdf not found.")
-
-            except subprocess.TimeoutExpired:
-                self.error.emit("pdflatex timed out.")
             except Exception as e:
                 self.error.emit(str(e))
-    
+
     def recents_generate_report(self, record: dict):
         # QFileDialog must stay in the main thread
+        default_path = os.path.join(get_documents_folder(), f"{record[PROJECT_NAME]}.pdf")
         target_pdf, _ = QFileDialog.getSaveFileName(
             self,
             "Save PDF Report As",
-            record[PROJECT_NAME],
+            default_path,
             "PDF (*.pdf)"
         )
         if not target_pdf:
