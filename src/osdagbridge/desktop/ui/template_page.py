@@ -333,6 +333,8 @@ class CustomWindow(QWidget):
         # Add Tool bar
         self.tool_bar = ToolBarWidget()
         central_V_layout.addWidget(self.tool_bar)
+        self.zoom_in_action.triggered.connect(self.tool_bar.btn_zoom_in.click)
+        self.zoom_out_action.triggered.connect(self.tool_bar.btn_zoom_out.click)
 
         # Wire context-sensitive toolbar behaviour (no existing code changed)
         from osdagbridge.desktop.ui.utils.toolbar_controller import ToolBarController
@@ -1122,16 +1124,32 @@ class CustomWindow(QWidget):
 
         if view == 'dual':
             self.cad_log_splitter.setSizes([view_h, 0, 0, log_h])
+
+            # Disable Graphics Zoom when 3D CAD is not visible
+            self.zoom_in_action.setEnabled(False)
+            self.zoom_out_action.setEnabled(False)
+
             # Reset toolbar when returning to dual view
             self.toolbar_ctrl.reset()
+
         elif view == '3d':
             self.cad_log_splitter.setSizes([0, view_h, 0, log_h])
+
             # Bind toolbar to 3D CAD view
             self.toolbar_ctrl.bind_to_cad_3d(self.cad_3d_widget)
+
+            # Enable Graphics Zoom when 3D CAD is visible
+            self.zoom_in_action.setEnabled(True)
+            self.zoom_out_action.setEnabled(True)
+
         else:  # plots
             self.cad_log_splitter.setSizes([0, 0, view_h, log_h])
             # Bind toolbar to Plots view
             self.toolbar_ctrl.bind_to_plots(self.plots_widget)
+
+            # Disable Graphics Zoom when Plots is visible
+            self.zoom_in_action.setEnabled(False)
+            self.zoom_out_action.setEnabled(False)
         
         # Update tool bar visibility based on view rules
         self._update_tool_bar_visibility()
@@ -1805,13 +1823,16 @@ class CustomWindow(QWidget):
         file_menu.addAction(quit_action)
 
         graphics_menu = self.menu_bar.addMenu("Graphics")
-        zoom_in_action = QAction("Zoom In", self)
-        zoom_in_action.setShortcut(QKeySequence("Ctrl+I"))
-        graphics_menu.addAction(zoom_in_action)
 
-        zoom_out_action = QAction("Zoom Out", self)
-        zoom_out_action.setShortcut(QKeySequence("Ctrl+O"))
-        graphics_menu.addAction(zoom_out_action)
+        self.zoom_in_action = QAction("Zoom In", self)
+        self.zoom_in_action.setShortcut(QKeySequence("Ctrl+I"))
+        self.zoom_in_action.setEnabled(False)
+        graphics_menu.addAction(self.zoom_in_action)
+
+        self.zoom_out_action = QAction("Zoom Out", self)
+        self.zoom_out_action.setShortcut(QKeySequence("Ctrl+O"))
+        self.zoom_out_action.setEnabled(False)
+        graphics_menu.addAction(self.zoom_out_action)
 
         pan_action = QAction("Pan", self)
         pan_action.setShortcut(QKeySequence("Ctrl+P"))
