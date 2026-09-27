@@ -23,6 +23,7 @@ from osdagbridge.core.utils.osi_validator import validate_osi_inputs
 from osdagbridge.core.utils.logger import bridge_logger
 from osdagbridge.desktop.ui.utils.custom_widgets import ToolBarWidget
 from osdagbridge.desktop.ui.utils.custom_cursors import pointing_hand_cursor
+from osdagbridge.core.utils.common import get_documents_folder
 
 class LoggerStdoutRedirector:
     def __init__(self, logger_func, original_stdout=None):
@@ -124,6 +125,12 @@ class CustomWindow(QWidget):
 
         # Resize on initial show
         self._initial_resize_done = False
+
+        # To track Save_Project State
+        self.save_state = False
+
+        # Saved Project
+        self.project_id = None
       
         # AdditionalInputs - Created once on first use, shown/hidden thereafter.
         self._get_additional_inputs()
@@ -732,9 +739,11 @@ class CustomWindow(QWidget):
             self._design_thread.start()
             return
 
-        if trigger == "Save":
+        elif trigger == "Save_OSI":
             self.saveOSI_inputs()
-            return
+
+        elif trigger == "Save_Project":
+            self.saveDesign()
         
         elif trigger == "Additional Inputs":
             self._show_additional_inputs(target_tab=target_tab)
@@ -814,8 +823,8 @@ class CustomWindow(QWidget):
         # Connect to input dock's value changed signals
         # This will update the CAD whenever any input field changes
         if hasattr(self.input_dock, 'input_value_changed'):
-            self.input_dock.input_value_changed.connect(self.update_cad_from_inputs)        
-            
+            self.input_dock.input_value_changed.connect(self.update_cad_from_inputs)
+
     # Function for saving input dictionary into an OSI file
     def saveOSI_inputs(self):
         # Populate additional input defaults so they appear in the saved file
@@ -860,7 +869,14 @@ class CustomWindow(QWidget):
         )
         if not filePath:
             return
+        self.load_osi_from_path(filePath)
 
+    def load_osi_from_path(self, filePath: str, notify: bool = True) -> bool:
+        """Populate the UI from an OSI file. Returns False if it wasn't loaded.
+
+        Split out of loadOSI_inputs so the host app can open a recent project
+        without going through the file dialog.
+        """
         try:
             with open(filePath, "r") as f:
                 data = yaml.safe_load(f)
@@ -881,7 +897,7 @@ class CustomWindow(QWidget):
                     ),
                     dialogType=MessageBoxType.Warning
                 ).exec()
-                return
+                return False
 
             self.input_dock.populate_from_dict(data)
 
@@ -896,11 +912,13 @@ class CustomWindow(QWidget):
             except Exception:
                 pass
 
-            CustomMessageBox(
-                title="Success",
-                text="Loaded OSI Successfully!",
-                dialogType=MessageBoxType.Success
-            ).exec()
+            if notify:
+                CustomMessageBox(
+                    title="Success",
+                    text="Loaded OSI Successfully!",
+                    dialogType=MessageBoxType.Success
+                ).exec()
+            return True
 
         except Exception as e:
             CustomMessageBox(
@@ -908,6 +926,129 @@ class CustomWindow(QWidget):
                 text=f"Could not load OSI file:\n{e}",
                 dialogType=MessageBoxType.Warning
             ).exec()
+            return False
+
+    #-----------------------Save-Project---------------------------------------
+    def _write_osi(self, filePath: str) -> bool:
+        """Dump input_dict to filePath as YAML. Returns False on failure."""
+        try:
+            solve_extend_basic_input_dict(self.input_dict)
+        except Exception:
+            pass
+        try:
+            with open(filePath, 'w') as input_file:
+                yaml.dump(self.input_dict, input_file)
+            return True
+        except Exception as e:
+            CustomMessageBox(
+                title="Unsaved File",
+                text=f"OSI file not saved:\n{e}",
+                dialogType=MessageBoxType.Warning
+            ).exec()
+            return False
+
+    # This is to save Design as Project if Design is already done
+    # Else Save only OSI file
+    def saveDesign(self):
+        """Save as project: .osi at the user's path, report.pdf in the app's report folder."""
+        import datetime, pathlib
+        from pathlib import Path
+        from osdag_home.data.database.database_config import (
+            PROJECT_NAME, PROJECT_PATH, MODULE_KEY, REPORT_FILE_PATH,
+            insert_recent_project, get_project_by_id,
+        )
+        from osdagbridge.core.reports.report_generator import (
+            ReportMetadata, ReportOptions, ReportRequest,
+        )
+
+        if not self.backend.design_completed:
+            result = CustomMessageBox(
+                title="Save Options",
+                text="To Save As Project, perform Design first.",
+                buttons=["Save OSI Only", "Cancel"],
+                dialogType=MessageBoxType.Information,
+            ).exec()
+            if result == "Save OSI Only":
+                self.saveOSI_inputs()
+            return
+
+        # ── Target path ──────────────────────────────────────────────────────
+        filePath = None
+        if self.save_state and self.project_id is not None:
+            existing = get_project_by_id(self.project_id)
+            result = CustomMessageBox(
+                title="Save Options",
+                text=f"Do you want to Overwrite\nthe existing project "
+                     f"'{existing.get(PROJECT_NAME)}.osi'?",
+                buttons=["Yes Overwrite", "Save as New", "Cancel"],
+                dialogType=MessageBoxType.Information,
+            ).exec()
+            if result == "Cancel":
+                return
+            if result == "Yes Overwrite":
+                filePath = existing.get(PROJECT_PATH)
+
+        if not filePath:
+            default_dir = os.path.join(get_documents_folder(), "Project.osi")
+            filePath, _ = QFileDialog.getSaveFileName(
+                self, "Save Design as Project", default_dir, "Project Files(*.osi)", None)
+            if not filePath:
+                return
+
+        # ── 1. Inputs ────────────────────────────────────────────────────────
+        if not self._write_osi(filePath):
+            return
+
+        # ── 2. Database record ───────────────────────────────────────────────
+        base_report_dir = os.path.join(get_documents_folder(), "osdag_home", "data", "reports")
+        record = {
+            PROJECT_NAME: Path(filePath).stem,
+            PROJECT_PATH: filePath,
+            MODULE_KEY: self.backend.module_name(),
+            REPORT_FILE_PATH: base_report_dir,
+        }
+        self.project_id = insert_recent_project(record)
+        self.save_state = True
+
+        # ── 3. Report — generate_design_report writes report.pdf/.tex itself ──
+        target_dir = os.path.join(base_report_dir, f"file_{self.project_id}")
+        pathlib.Path(target_dir).mkdir(parents=True, exist_ok=True)
+
+        meta = getattr(self, '_report_metadata', None) or {}
+        request = ReportRequest(
+            metadata=ReportMetadata(
+                project_name=meta.get('project_name', Path(filePath).stem),
+                project_location='', designer='', reviewer='', client='',
+                company='', group_name='', subtitle='', job_number='',
+                additional_comments='', logo_path=None,
+                report_date=datetime.date.today().isoformat(),
+            ),
+            options=ReportOptions(
+                sections=[
+                    "exec_summary", "project_info", "input_parameters", "loads",
+                    "analysis", "design_checks", "drawings", "quantities",
+                    "standards", "design_log_window", "references",
+                ],
+                include_figures=True,
+                include_toc=True,
+                include_pdf=True,
+            ),
+            output_dir=target_dir,
+            file_stem="report",
+        )
+
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        cad_gen = self.output_dock._capture_data()
+        self.backend.generate_design_report(request,
+                                            cad_gen,
+                                            is_preview=False)
+        QApplication.restoreOverrideCursor()
+
+        CustomMessageBox(
+            title="Success",
+            text="Saved Design as Project Successfully!",
+            dialogType=MessageBoxType.Success,
+        ).exec()
 
     def update_cad_from_inputs(self):
         """
@@ -1355,17 +1496,6 @@ class CustomWindow(QWidget):
                 return
 
             request = dialog.request
-
-            if not hasattr(self, 'backend') \
-                    or self.backend is None:
-                CustomMessageBox(
-                    title="Report Error",
-                    text="No design backend available. "
-                         "Run design first.",
-                    dialogType=MessageBoxType.Critical,
-                ).exec()
-                return
-
             backend = self.backend
 
             # ── Run in background thread ──────────────────
@@ -1792,9 +1922,9 @@ class CustomWindow(QWidget):
 
         file_menu.addSeparator()
 
-        save_input_action = QAction("Save Input", self)
+        save_input_action = QAction("Save Project", self)
         save_input_action.setShortcut(QKeySequence("Ctrl+S"))
-        save_input_action.triggered.connect(lambda: self.common_design_func("Save"))
+        save_input_action.triggered.connect(lambda: self.common_design_func("Save_Project"))
         file_menu.addAction(save_input_action)
 
         save_log_action = QAction("Save Log Messages", self)
@@ -1865,6 +1995,7 @@ class CustomWindow(QWidget):
         database_menu.addAction(output_csv_action)
 
         input_osi_action = QAction("Save Inputs (.osi)", self)
+        input_osi_action.triggered.connect(lambda: self.common_design_func("Save_OSI"))
         database_menu.addAction(input_osi_action)
 
         download_database_menu = database_menu.addMenu("Download Database")
