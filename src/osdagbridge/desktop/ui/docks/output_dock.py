@@ -615,10 +615,7 @@ class OutputDock(QWidget):
         # Find cad_3d_widget
         cad_3d_widget = None
         main_window = self.parent
-        while main_window and not hasattr(main_window, 'cad_3d_widget'):
-            main_window = getattr(main_window, 'parent', None)
-        if main_window and hasattr(main_window, 'cad_3d_widget'):
-            cad_3d_widget = main_window.cad_3d_widget
+        cad_3d_widget = main_window.cad_3d_widget
 
         # Capture figures on the main thread — bytes only, nothing written to disk
         cad_generator = None
@@ -772,11 +769,7 @@ class OutputDock(QWidget):
 
         # Find dialog host and trigger
         main_window = self.parent
-        while main_window and not hasattr(main_window, 'open_report_dialog'):
-            main_window = getattr(main_window, 'parent', None)
-        if main_window and hasattr(main_window, 'open_report_dialog'):
-            main_window.open_report_dialog(cad_generator=cad_generator)
-
+        main_window.open_report_dialog(cad_generator=cad_generator)
 
     def reset(self):
         """Reset output dock to blank defaults when the lock is released."""
@@ -947,7 +940,4 @@ class OutputDock(QWidget):
         output_dict = dict(getattr(self.backend, 'output_dict'))
         dlg = GenerateResultsDialog(parent=None, output_dict=output_dict)
         dlg.exec()
-
-
-
 
