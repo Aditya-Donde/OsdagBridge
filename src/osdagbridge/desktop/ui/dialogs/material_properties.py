@@ -28,7 +28,7 @@ from osdagbridge.core.utils.common import (
 )
 from osdagbridge.desktop.ui.utils.custom_cursors import pointing_hand_cursor
 
-concrete_properies = connectdb("Concrete_Grade_Properties")
+concrete_properties = connectdb("Concrete_Grade_Properties")
 
 DIALOG_TITLE_MATERIAL_PROPERTIES = "Enter Custom Properties"
 CUSTOM_STEEL_PREFIX = "custom_steel_"
@@ -434,7 +434,7 @@ class MaterialPropertiesDialog(QDialog):
 
     def _is_deck_material(self, material_name: str) -> bool:
         normalized = (material_name or "").strip()
-        return (normalized in concrete_properies or 
+        return (normalized in concrete_properties or 
                 normalized.lower().startswith(CUSTOM_CONCRETE_PREFIX))
 
     def _defaults_for_material(self, material_name):

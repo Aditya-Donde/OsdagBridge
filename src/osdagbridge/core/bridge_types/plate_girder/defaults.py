@@ -142,7 +142,7 @@ from osdagbridge.core.utils.common import (
     connectdb,
 )
 steel_properties = connectdb("Steel_Grade_Properties")
-concrete_properies = connectdb("Concrete_Grade_Properties")
+concrete_properties = connectdb("Concrete_Grade_Properties")
 
 # This is default initial dictionary
 BASIC_INPUT_DICT = {
@@ -159,7 +159,7 @@ BASIC_INPUT_DICT = {
     KEY_GIRDER: steel_properties[12],
     KEY_CROSS_BRACING: steel_properties[12],
     KEY_END_DIAPHRAGM: steel_properties[12],
-    KEY_DECK_CONCRETE_GRADE_BASIC: concrete_properies[5],
+    KEY_DECK_CONCRETE_GRADE_BASIC: concrete_properties[5],
 
     # Additional Inputs Defaults
     

@@ -97,11 +97,11 @@ class FrontendData:
             behaviour are declared here — InputDock has no key-specific logic.
         """
         steel_properties = connectdb("Steel_Grade_Properties")
-        concrete_properies = connectdb("Concrete_Grade_Properties")
+        concrete_properties = connectdb("Concrete_Grade_Properties")
 
         # Remove some concrete grades for deck slab
         for grade in ["M15", "M20", "M25", "M30", "M35"]:
-            concrete_properies.remove(grade)
+            concrete_properties.remove(grade)
 
         return [
             # ── Module marker ─────────────────────────────────────────────────
@@ -235,7 +235,7 @@ class FrontendData:
                 }),
 
             (KEY_DECK_CONCRETE_GRADE_BASIC, KEY_DISP_DECK_CONCRETE_GRADE, TYPE_COMBOBOX,
-                concrete_properies, True, "No Validator",
+                concrete_properties, True, "No Validator",
                 {
                     "default":           BASIC_INPUT_DICT.get(KEY_DECK_CONCRETE_GRADE_BASIC),
                     "is_material_field": True,
