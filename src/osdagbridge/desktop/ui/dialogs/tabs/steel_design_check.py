@@ -441,10 +441,6 @@ class SteelDesignCheckTab(QWidget):
             "background: transparent; border: none;"
         )
 
-        checks_lbl = QLabel(f"Checks: {len(DESIGN_CHECKS)}")
-        checks_lbl.setStyleSheet(_S)
-        layout.addWidget(checks_lbl)
-
         self.summary_passed_label = QLabel("Passed: \u2014")
         self.summary_passed_label.setStyleSheet(_S)
         layout.addWidget(self.summary_passed_label)
