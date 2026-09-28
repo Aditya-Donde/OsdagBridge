@@ -135,8 +135,11 @@ from osdagbridge.core.utils.common import (
     KEY_SD_SHEAR_VU,
     KEY_SD_STIFF_END_COUNT,
     KEY_SD_STIFF_END_THICK,
+    KEY_SD_STIFF_END_THICK_REQ,
     KEY_SD_STIFF_INT_SPACING,
+    KEY_SD_STIFF_INT_SPACING_REQ,
     KEY_SD_STIFF_INT_THICK,
+    KEY_SD_STIFF_INT_THICK_REQ,
     KEY_SD_STIFF_LONG,
     KEY_SD_STIFF_METHOD,
     KEY_SD_STRESS_STEEL,
@@ -331,9 +334,12 @@ def ch5_design_checks(checks_data, bridge, chart_paths=None) -> str:
     # Generate Table 5.7 rows
     t57_items = [
         ["Shear Buckling Design Method", str(_render_value(bridge.output_dict, KEY_SD_STIFF_METHOD)).replace("_", " ").title()],
-        ["Intermediate Stiffener Thickness (mm)", _render_value(bridge.output_dict, KEY_SD_STIFF_INT_THICK)],
-        ["Intermediate Stiffener Spacing (mm)", _render_value(bridge.output_dict, KEY_SD_STIFF_INT_SPACING)],
-        ["End Panel Stiffener Thickness (mm)", _render_value(bridge.output_dict, KEY_SD_STIFF_END_THICK)],
+        ["Provided Intermediate Stiffener Thickness (mm)", _render_value(bridge.output_dict, KEY_SD_STIFF_INT_THICK)],
+        ["Required Intermediate Stiffener Thickness (mm)", _render_value(bridge.output_dict, KEY_SD_STIFF_INT_THICK_REQ)],
+        ["Provided Intermediate Stiffener Spacing (mm)", _render_value(bridge.output_dict, KEY_SD_STIFF_INT_SPACING)],
+        ["Required Intermediate Stiffener Spacing (mm)", _render_value(bridge.output_dict, KEY_SD_STIFF_INT_SPACING_REQ)],
+        ["Provided Bearing (End Panel) Stiffener Thickness (mm)", _render_value(bridge.output_dict, KEY_SD_STIFF_END_THICK)],
+        ["Required Bearing (End Panel) Stiffener Thickness (mm)", _render_value(bridge.output_dict, KEY_SD_STIFF_END_THICK_REQ)],
         ["No. of End Panel Stiffeners", _render_value(bridge.output_dict, KEY_SD_STIFF_END_COUNT)],
         ["Longitudinal Stiffeners", _render_value(bridge.output_dict, KEY_SD_STIFF_LONG)],
     ]
