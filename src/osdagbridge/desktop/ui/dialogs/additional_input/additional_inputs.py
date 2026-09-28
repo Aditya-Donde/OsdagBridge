@@ -1308,6 +1308,20 @@ class AdditionalInputs(QDialog):
                 return w.currentWidget()
             return w
 
+        # Rolled and Welded share the dimension keys (_on_is_section_changed writes
+        # the catalogue dimensions over them), so the welded values are set aside
+        # while the member is Rolled and put back when it returns to Welded.
+        # The member's stored type is still the previous one here, because
+        # _save_member_fields_connector is wired after this handler.
+        gi, mi = self._get_current_girder_member_indices()
+        suffix = f".G{gi}.M{mi}"
+        previous_type = str(self.working_input_dict.get(KEY_MP_GIRDER_TYPE + suffix) or "").strip().lower()
+        restored = False
+        if not is_welded and previous_type == "welded":
+            self._stash_welded_dims(suffix)
+        elif is_welded and previous_type == "rolled":
+            restored = self._restore_welded_dims(suffix)
+
         for key in welded_keys:
             w   = self.findChild(QWidget, key)
             lbl = self.findChild(QLabel, key + "_label")
@@ -1328,6 +1342,9 @@ class AdditionalInputs(QDialog):
             if live: live.blockSignals(is_welded)
 
         if is_welded:
+            if restored:
+                # Re-apply the restored symmetry (the Rolled section forced symmetric).
+                self._on_symmetry_changed()
             # Refresh welded section properties now that Depth is visible/live again.
             # To Update Section Properties
             depth_w = _live_widget(KEY_MP_GIRDER_DEPTH)
@@ -1725,6 +1742,35 @@ class AdditionalInputs(QDialog):
             self.working_input_dict[key] = value
 
         self._update_section_drawing()
+
+    def _stash_welded_dims(self, suffix: str) -> None:  # utility: sets a member's welded dimensions aside before the Rolled catalogue ones overwrite them
+        for key in self._ROLLED_SECTION_DIM_KEYS:
+            value = self.working_input_dict.get(key + suffix)
+            if value is not None:
+                self.working_input_dict[key + ".welded" + suffix] = value
+
+    def _restore_welded_dims(self, suffix: str) -> bool:  # utility: puts a member's stashed welded dimensions back into working_input_dict and the welded widgets
+        restored = False
+        for key in self._ROLLED_SECTION_DIM_KEYS:
+            value = self.working_input_dict.pop(key + ".welded" + suffix, None)
+            if value is None:
+                continue
+            restored = True
+            self.working_input_dict[key + suffix] = value
+            self.working_input_dict[key] = value
+
+            w = self.findChild(QWidget, key)
+            if isinstance(w, AdaptiveWidget):
+                w = w.currentWidget()
+            if isinstance(w, QComboBox):
+                was_blocked = w.blockSignals(True)
+                w.setCurrentText(str(value))
+                w.blockSignals(was_blocked)
+            elif isinstance(w, QLineEdit):
+                was_blocked = w.blockSignals(True)
+                w.setText(str(value))
+                w.blockSignals(was_blocked)
+        return restored
 
     def _on_torsional_restraint_changed(self, restraint: str) -> None:
         gi, mi = self._get_current_girder_member_indices()
