@@ -74,6 +74,7 @@ from osdagbridge.core.utils.common import (
     KEY_MP_CB_TOP_CHORD,
     KEY_MP_CB_BOTTOM_CHORD,
     KEY_MP_CB_BRACING_CONNECTION,
+    KEY_MP_ED_BRACING_CONNECTION,
     KEY_MP_ED_BRACING_SECTION_DESIGNATION,
     KEY_MP_ED_TOP_CHORD_SECTION_DESIG,
     KEY_MP_ED_BOTTOM_CHORD_SECTION_DESIG,
@@ -1182,9 +1183,21 @@ class TransverseMemberDesign(QDialog):
         if no_cb_w:
             no_cb_w.setText("2")
 
+        pair_id = pair_key.replace("-", "")
+        od = getattr(self._backend, "output_dict", {}) or {}
+        m = re.match(r"G(\d+)G", pair_id)
+        girder_idx = m.group(1) if m else "1"
+        e_suffix = f".{pair_id}.E{girder_idx}M1"
+
         conn_w = self._widgets.get(KEY_TD_ED_SECTION_INPUTS_CONNECTION_TYPE)
         if conn_w:
-            conn_w.setText("Bolted")
+            conn = str(
+                od.get(f"{KEY_MP_ED_BRACING_CONNECTION}{e_suffix}")
+                or od.get(f"{KEY_MP_ED_BRACING_CONNECTION}.{pair_id}")
+                or od.get(KEY_MP_ED_BRACING_CONNECTION)
+                or "Bolted"
+            )
+            conn_w.setText(conn)
 
         pair_designs = self._designs_dict.get(pair_key, {}) if self._designs_dict else {}
         ed_type      = pair_designs.get("ed_type") or ""
@@ -1213,18 +1226,11 @@ class TransverseMemberDesign(QDialog):
             self._fill_section_card("ED Welded Beam", wb.get("designation", ""), "Welded Beam")
 
         else:  # Cross Bracing
-            pair_id = pair_key.replace("-", "")
-
             diag_des  = self._get_governing_section(pair_designs, "diagonal", True) if pair_designs else ""
             chord_des = self._get_governing_section(pair_designs, "chord", True) if pair_designs else ""
 
             btype_raw = pair_designs.get("ed_bracing_type") if pair_designs else None
             brace_lbl = ("K-Bracing" if "K" in str(btype_raw).upper() else "X-Bracing") if btype_raw else ""
-
-            od = getattr(self._backend, "output_dict", {}) or {}
-            m = re.match(r"G(\d+)G", pair_id)
-            girder_idx = m.group(1) if m else "1"
-            e_suffix = f".{pair_id}.E{girder_idx}M1"
 
             # Section types follow the same mode rule as the designations, so
             # the type and designation shown never disagree (e.g. a "Channel"

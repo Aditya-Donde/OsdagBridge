@@ -138,6 +138,7 @@ import pandas as pd
 from osdagbridge.core.utils.common import (
     KEY_MP_CB_SPACING,
     KEY_MP_CB_TYPE,
+    KEY_MP_CB_BRACING_CONNECTION,
     KEY_MP_CB_NO_OF_CROSS_BRACINGS,
     KEY_MP_GIRDER_DEPTH,
     KEY_MP_GIRDER_WEB_DEPTH,
@@ -160,6 +161,7 @@ from osdagbridge.core.utils.common import (
     KEY_MP_ED_BOTTOM_CHORD_LEG_H, KEY_MP_ED_BOTTOM_CHORD_LEG_W, KEY_MP_ED_BOTTOM_CHORD_THICKNESS,
     KEY_MP_ED_TYPE,
     KEY_MP_ED_BRACING_TYPE,
+    KEY_MP_ED_BRACING_CONNECTION,
     KEY_MP_ED_TOP_CHORD,
     KEY_MP_ED_BOTTOM_CHORD,
     KEY_MP_ED_BRACING_SECTION,
@@ -773,7 +775,9 @@ class CrossBracingForces:
 
         from osdagbridge.core.utils.connect import (
             design_dict_struts_bolted,
+            design_dict_struts_welded,
             design_dict_tension_bolted,
+            design_dict_tension_welded,
         )
 
         if not forces_dict or not forces_dict.get("pairs"):
@@ -789,6 +793,28 @@ class CrossBracingForces:
         jobs: list[tuple[str, str, str, dict]] = []
 
         for pair, vals in forces_dict["pairs"].items():
+            pair_id = pair.replace("-", "")
+            pair_match = re.match(r"G(\d+)G\d+", pair_id)
+            connection_key = (
+                f"{KEY_MP_CB_BRACING_CONNECTION}.{pair_id}.B{pair_match.group(1)}M1"
+                if pair_match else KEY_MP_CB_BRACING_CONNECTION
+            )
+            connection_value = self.bridge.input_dict.get(connection_key)
+            if connection_value in (None, ""):
+                connection_value = self.bridge.input_dict.get(
+                    f"{KEY_MP_CB_BRACING_CONNECTION}.{pair_id}"
+                )
+            if connection_value in (None, ""):
+                connection_value = self.bridge.input_dict.get(KEY_MP_CB_BRACING_CONNECTION)
+            connection = str(connection_value or "Bolted").strip().lower()
+            tension_template = (
+                design_dict_tension_welded if connection == "welded"
+                else design_dict_tension_bolted
+            )
+            compression_template = (
+                design_dict_struts_welded if connection == "welded"
+                else design_dict_struts_bolted
+            )
             pair_overrides = (custom_sections or {}).get(pair, {})
             geom       = all_geometry.get(pair, {})
             L_diag_mm  = round(geom.get("diagonal_length_m", 0) * 1000)
@@ -811,17 +837,19 @@ class CrossBracingForces:
             for member, L_mm, t_key, c_key, ov_key in members:
                 override = pair_overrides.get(ov_key)
                 if vals.get(t_key) is not None:
-                    d = copy.deepcopy(design_dict_tension_bolted)
+                    d = copy.deepcopy(tension_template)
                     d["Load.Axial"]    = str(float(vals[t_key]))
                     d["Member.Length"] = str(L_mm)
                     _apply_section_override(d, override)
                     jobs.append((pair, member, "tension", d))
 
                 if vals.get(c_key) is not None:
-                    d = copy.deepcopy(design_dict_struts_bolted)
+                    d = copy.deepcopy(compression_template)
                     d["Load.Axial"]    = str(float(vals[c_key]))
                     d["Member.Length"] = str(L_mm)
                     _apply_section_override(d, override)
+                    if connection == "welded" and d.get("Member.Profile") == "Back to Back Angles":
+                        d["Member.Profile"] = "Back to Back Angles - Same side of gusset"
                     jobs.append((pair, member, "compression", d))
 
         if not jobs:
@@ -1399,9 +1427,31 @@ class EndDiaphragmForces:
                 # Run Osdag design checks
                 from osdagbridge.core.utils.connect import (
                     design_dict_struts_bolted,
+                    design_dict_struts_welded,
                     design_dict_tension_bolted,
+                    design_dict_tension_welded,
                     design_pool,
                     run_calculation,
+                )
+
+                connection_value = (
+                    bridge.input_dict.get(f"{KEY_MP_ED_BRACING_CONNECTION}{member_suffix}")
+                    or bridge.input_dict.get(f"{KEY_MP_ED_BRACING_CONNECTION}{_m1}")
+                    or bridge.input_dict.get(f"{KEY_MP_ED_BRACING_CONNECTION}{_m2}")
+                    or bridge.input_dict.get(f"{KEY_MP_ED_BRACING_CONNECTION}.{pair_id}")
+                    or bridge.input_dict.get(KEY_MP_ED_BRACING_CONNECTION)
+                )
+                connection = str(connection_value or "Bolted").strip().lower()
+                bridge.output_dict[make_pair_key(KEY_MP_ED_BRACING_CONNECTION, pair_id)] = (
+                    "Welded" if connection == "welded" else "Bolted"
+                )
+                tension_template = (
+                    design_dict_tension_welded if connection == "welded"
+                    else design_dict_tension_bolted
+                )
+                compression_template = (
+                    design_dict_struts_welded if connection == "welded"
+                    else design_dict_struts_bolted
                 )
 
                 # In Custom mode the user picked the sections in Additional
@@ -1438,16 +1488,18 @@ class EndDiaphragmForces:
                 for member, L_mm, t_key, c_key, ov_key in ed_members:
                     override = ed_overrides.get(ov_key)
                     if pair_forces.get(t_key) is not None:
-                        d = copy.deepcopy(design_dict_tension_bolted)
+                        d = copy.deepcopy(tension_template)
                         d["Load.Axial"] = str(float(pair_forces[t_key]))
                         d["Member.Length"] = str(L_mm)
                         _apply_section_override(d, override)
                         jobs.append((pair, member, "tension", d))
                     if pair_forces.get(c_key) is not None:
-                        d = copy.deepcopy(design_dict_struts_bolted)
+                        d = copy.deepcopy(compression_template)
                         d["Load.Axial"] = str(float(pair_forces[c_key]))
                         d["Member.Length"] = str(L_mm)
                         _apply_section_override(d, override)
+                        if connection == "welded" and d.get("Member.Profile") == "Back to Back Angles":
+                            d["Member.Profile"] = "Back to Back Angles - Same side of gusset"
                         jobs.append((pair, member, "compression", d))
 
                 if jobs:
