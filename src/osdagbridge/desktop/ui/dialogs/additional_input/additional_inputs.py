@@ -1235,6 +1235,15 @@ class AdditionalInputs(QDialog):
         KEY_MP_GIRDER_TORSION_CONSTANT_IT, KEY_MP_GIRDER_WARPING_CONSTANT_IW,
     ]
 
+    # Dimension keys a Rolled girder takes from the IS section catalogue instead of
+    # the (hidden) welded dimension widgets — see _on_is_section_changed.
+    _ROLLED_SECTION_DIM_KEYS = [
+        KEY_MP_GIRDER_SYMMETRY, KEY_MP_GIRDER_DEPTH, KEY_MP_GIRDER_WEB_DEPTH,
+        KEY_MP_GIRDER_TOP_FLANGE_WIDTH, KEY_MP_GIRDER_TOP_FLANGE_THICKNESS,
+        KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH, KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS,
+        KEY_MP_GIRDER_WEB_THICKNESS,
+    ]
+
     def _update_apply_button_visibility(self, origin_key: str, target_widget: QWidget) -> None:  # END_CONNECTOR: shows Exterior/Interior Apply button based on selected girder position
         """Show/hide Apply Exterior or Apply Interior button based on selected girder index."""
         count = int(float(str(self.working_input_dict.get(KEY_TS_NO_OF_GIRDERS) or 1)))
@@ -1299,6 +1308,20 @@ class AdditionalInputs(QDialog):
                 return w.currentWidget()
             return w
 
+        # Rolled and Welded share the dimension keys (_on_is_section_changed writes
+        # the catalogue dimensions over them), so the welded values are set aside
+        # while the member is Rolled and put back when it returns to Welded.
+        # The member's stored type is still the previous one here, because
+        # _save_member_fields_connector is wired after this handler.
+        gi, mi = self._get_current_girder_member_indices()
+        suffix = f".G{gi}.M{mi}"
+        previous_type = str(self.working_input_dict.get(KEY_MP_GIRDER_TYPE + suffix) or "").strip().lower()
+        restored = False
+        if not is_welded and previous_type == "welded":
+            self._stash_welded_dims(suffix)
+        elif is_welded and previous_type == "rolled":
+            restored = self._restore_welded_dims(suffix)
+
         for key in welded_keys:
             w   = self.findChild(QWidget, key)
             lbl = self.findChild(QLabel, key + "_label")
@@ -1319,6 +1342,9 @@ class AdditionalInputs(QDialog):
             if live: live.blockSignals(is_welded)
 
         if is_welded:
+            if restored:
+                # Re-apply the restored symmetry (the Rolled section forced symmetric).
+                self._on_symmetry_changed()
             # Refresh welded section properties now that Depth is visible/live again.
             # To Update Section Properties
             depth_w = _live_widget(KEY_MP_GIRDER_DEPTH)
@@ -1432,12 +1458,22 @@ class AdditionalInputs(QDialog):
         mi = (member_combo.currentIndex() + 1) if member_combo else 1
         return gi, mi
 
+    def _is_rolled_girder(self) -> bool:  # utility: True when the Girder Details "Type" widget currently shows Rolled
+        type_w = self.findChild(QComboBox, KEY_MP_GIRDER_TYPE)
+        return bool(type_w) and type_w.currentText().strip().lower() == "rolled"
+
     def _save_member_fields(self) -> None:  # utility: serialises all Girder Details widget values into working_input_dict under G{i}.M{j} keys
         gi, mi = self._get_current_girder_member_indices()
         suffix = f".G{gi}.M{mi}"
         # print(f"[SAVE_MEMBER_FIELDS] G{gi}.M{mi}")
 
+        # A Rolled girder's dimensions are written by _on_is_section_changed; its
+        # welded dimension widgets are hidden and stale, so they are not saved.
+        is_rolled = self._is_rolled_girder()
+
         for key in self._MEMBER_FIELD_KEYS:
+            if is_rolled and key in self._ROLLED_SECTION_DIM_KEYS:
+                continue
             w = self.findChild(QWidget, key)
 
             if isinstance(w, AdaptiveWidget):
@@ -1602,7 +1638,9 @@ class AdditionalInputs(QDialog):
         
         # Always update drawing with the changed top flange value
         self._update_section_drawing()
-        
+        if self._is_rolled_girder():
+            return  # rolled — flanges come from the catalogue, nothing to mirror
+
         sym_val = self.working_input_dict.get(KEY_MP_GIRDER_SYMMETRY + suffix, "Girder Symmetric")
         if sym_val.strip().lower() != "girder symmetric":
             return  # unsymmetric — nothing to mirror
@@ -1668,6 +1706,71 @@ class AdditionalInputs(QDialog):
             self._on_top_flange_changed()  # reuse — does the mirror + drawing update
         else:
             self._update_section_drawing()
+
+    def _on_is_section_changed(self, designation: str = None) -> None:  # on_change: fills a Rolled girder's dimension keys from the IS section catalogue
+        # A Welded girder's dimensions are typed into the dimension widgets; a Rolled
+        # one has only its IS designation, so its dimensions are written here — in mm,
+        # like the welded fields — the same way _on_top_flange_changed mirrors the
+        # bottom flange. The properties come from _compute_rolled_section_properties.
+        gi, mi = self._get_current_girder_member_indices()
+        suffix = f".G{gi}.M{mi}"
+
+        if not self._is_rolled_girder():
+            self._update_section_drawing()
+            return
+
+        if designation is None:
+            designation = str(self.working_input_dict.get(KEY_MP_GIRDER_IS_SECTION + suffix) or "")
+        beam = girder_catalog.get_beam_profile(str(designation).strip())
+        if beam is None:
+            self._update_section_drawing()
+            return
+
+        # Rolled I-sections are symmetric: one flange width/thickness for both.
+        dims_mm = {
+            KEY_MP_GIRDER_SYMMETRY:                "Girder Symmetric",
+            KEY_MP_GIRDER_DEPTH:                   beam.depth_mm,
+            KEY_MP_GIRDER_WEB_DEPTH:               beam.depth_mm - 2.0 * beam.flange_thickness_mm,
+            KEY_MP_GIRDER_WEB_THICKNESS:           beam.web_thickness_mm,
+            KEY_MP_GIRDER_TOP_FLANGE_WIDTH:        beam.flange_width_mm,
+            KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH:     beam.flange_width_mm,
+            KEY_MP_GIRDER_TOP_FLANGE_THICKNESS:    beam.flange_thickness_mm,
+            KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS: beam.flange_thickness_mm,
+        }
+        for key, value in dims_mm.items():
+            self.working_input_dict[key + suffix] = value
+            self.working_input_dict[key] = value
+
+        self._update_section_drawing()
+
+    def _stash_welded_dims(self, suffix: str) -> None:  # utility: sets a member's welded dimensions aside before the Rolled catalogue ones overwrite them
+        for key in self._ROLLED_SECTION_DIM_KEYS:
+            value = self.working_input_dict.get(key + suffix)
+            if value is not None:
+                self.working_input_dict[key + ".welded" + suffix] = value
+
+    def _restore_welded_dims(self, suffix: str) -> bool:  # utility: puts a member's stashed welded dimensions back into working_input_dict and the welded widgets
+        restored = False
+        for key in self._ROLLED_SECTION_DIM_KEYS:
+            value = self.working_input_dict.pop(key + ".welded" + suffix, None)
+            if value is None:
+                continue
+            restored = True
+            self.working_input_dict[key + suffix] = value
+            self.working_input_dict[key] = value
+
+            w = self.findChild(QWidget, key)
+            if isinstance(w, AdaptiveWidget):
+                w = w.currentWidget()
+            if isinstance(w, QComboBox):
+                was_blocked = w.blockSignals(True)
+                w.setCurrentText(str(value))
+                w.blockSignals(was_blocked)
+            elif isinstance(w, QLineEdit):
+                was_blocked = w.blockSignals(True)
+                w.setText(str(value))
+                w.blockSignals(was_blocked)
+        return restored
 
     def _on_torsional_restraint_changed(self, restraint: str) -> None:
         gi, mi = self._get_current_girder_member_indices()
