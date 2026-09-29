@@ -766,6 +766,16 @@ KEY_LL_IRC_CLASS_SV             = "loading.live_load.irc.class_sv"
 KEY_LL_IRC_70R_BOGIE            = "loading.live_load.irc.70r_bogie"
 KEY_LL_IRC_CLASS_FATIGUE        = "loading.live_load.irc.class_fatigue"
 
+
+# Live Load Report Values
+KEY_LL_IMPACT_FACTOR_CLASS_A = "loading.live_load.impact_factor.class_a"
+KEY_LL_IMPACT_FACTOR_CLASS_AA_70R = "loading.live_load.impact_factor.class_aa_70r"
+KEY_LL_VEHICLE_TOTAL_LOAD_CLASS_A = "loading.live_load.vehicle_total_load.class_a"
+KEY_LL_VEHICLE_TOTAL_LOAD_70R_WHEELED = "loading.live_load.vehicle_total_load.70r_wheeled"
+KEY_LL_VEHICLE_TOTAL_LOAD_70R_TRACKED = "loading.live_load.vehicle_total_load.70r_tracked"
+KEY_LL_VEHICLE_TOTAL_LOAD_FATIGUE = "loading.live_load.vehicle_total_load.fatigue"
+KEY_LL_VEHICLE_TOTAL_LOAD_CLASS_SV = "loading.live_load.vehicle_total_load.class_sv"
+
 # Breaking Load keys — mirror the vehicle class keys
 KEY_BL_IRC_CLASS_A        = "bl_irc_class_a"
 KEY_BL_IRC_AA_WHEELED     = "bl_irc_aa_wheeled"

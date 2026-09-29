@@ -887,10 +887,17 @@ def build_forces_summary(result_handler, load_effects_cache: dict) -> dict:
         cache_label_to_gmap_key[f"G{gi}"] = girder_name
         gi += 1
 
-    # Collect the same filtered load case list the cache was built with
-    all_lcs = set()
+    # Collect the same filtered load case list the cache was built with.
+    # Keep classify_loadcases() order; append any cache-only cases without reordering.
+    cache_lcs = {lc for girder_data in load_effects_cache.values() for lc in girder_data.keys()}
+    classified = result_handler.classify_loadcases()
+    all_lcs = [str(lc) for lc in classified.get("all", []) if str(lc) in cache_lcs]
+    seen_lcs = set(all_lcs)
     for girder_data in load_effects_cache.values():
-        all_lcs.update(girder_data.keys())
+        for lc in girder_data.keys():
+            if lc not in seen_lcs:
+                seen_lcs.add(lc)
+                all_lcs.append(lc)
 
     lc_summary = {}
     rxn_summary = {}
