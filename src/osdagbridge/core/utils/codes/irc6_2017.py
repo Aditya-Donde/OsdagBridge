@@ -186,8 +186,88 @@ class IRC6_2017:
             'wheel_loads': wheel_loads,
             'spacing_ClassA': spacing_ClassA
         }
-    
-    
+
+    # IRC 6:2017 Table 2 — Class A ground-contact dimensions, keyed by axle
+    # load (tonnes) — the same axle values used in cl_204_1_ClassA_vehicle().
+    # For each axle:
+    #   B = contact dimension along the direction of travel — at right angles
+    #       to the deck span, so it feeds b1 in IRC 112:2020 Eq. B3.1/B3.2.
+    #   W = contact dimension transverse to the direction of travel — feeds
+    #       c2 for punching-shear dispersion.
+    _TABLE_2_CLASS_A_BW_MM = {
+        11.4: (250.0, 500.0),
+        6.8:  (200.0, 380.0),
+        2.7:  (150.0, 200.0),
+    }
+
+    @staticmethod
+    def table_2(axle_load_t):
+        """
+        IRC:6-2017 Table 2 — Class A ground-contact dimensions (B, W) in mm
+        for a given Class A axle load (tonnes).
+
+        B = contact dimension along the direction of travel.
+        W = contact dimension transverse to the direction of travel.
+
+        Args:
+            axle_load_t (float): Axle load in tonnes. Rounded to 3 decimal
+                places before lookup (Table 2 is defined for exact tonnage
+                values: 11.4, 6.8, 2.7; the extra digits are margin against
+                a future non-round axle load, not needed for these three).
+
+        Returns:
+            tuple: (B_mm, W_mm)
+
+        Raises:
+            ValueError: If axle_load_t does not match a supported Table 2 value.
+        """
+        axle_t = round(axle_load_t, 3)
+        try:
+            return IRC6_2017._TABLE_2_CLASS_A_BW_MM[axle_t]
+        except KeyError:
+            raise ValueError(
+                f"IRC 6:2017 Table 2 has no ground-contact dimensions for a "
+                f"{axle_t} t Class A axle (expected one of "
+                f"{sorted(IRC6_2017._TABLE_2_CLASS_A_BW_MM, reverse=True)} t)"
+            ) from None
+
+    # IRC 6:2017 Cl. 204.1 — source of the ground-contact dimensions, by
+    # governing vehicle: Class A dimensions come from Table 2, Class B from
+    # Table 4 (no numbered table exists for Class 70R — its ground-contact
+    # dimensions are given only in Fig. 1, for both 70R(W) and 70R(T)).
+    _CONTACT_DIMENSION_REF = {
+        KEY_VEHICLE[2]: "IRC 6-2017 Table 2 (Cl. 204.1)",   # ClassA
+        KEY_VEHICLE[3]: "IRC 6-2017 Table 4 (Cl. 204.1)",   # ClassB
+        KEY_VEHICLE[0]: "IRC 6-2017 Fig. 1 (Cl. 204.1)",    # Class70R(W)
+        KEY_VEHICLE[1]: "IRC 6-2017 Fig. 1 (Cl. 204.1)",    # Class70R(T)
+    }
+
+    @staticmethod
+    def contact_dimension_reference(vehicle_class):
+        """
+        IRC:6-2017 Cl. 204.1 — the clause/table/figure that gives the
+        ground-contact dimensions for the given governing vehicle class.
+
+        Args:
+            vehicle_class (str): One of the KEY_VEHICLE values
+                ('Class70R(W)', 'Class70R(T)', 'ClassA', 'ClassB').
+
+        Returns:
+            str: Human-readable IRC reference, e.g. "IRC 6-2017 Table 2 (Cl. 204.1)".
+
+        Raises:
+            ValueError: If vehicle_class is not one of the four KEY_VEHICLE
+                values. An engineering report must not silently cite the
+                wrong table for an unrecognised vehicle class.
+        """
+        try:
+            return IRC6_2017._CONTACT_DIMENSION_REF[vehicle_class]
+        except KeyError:
+            raise ValueError(
+                f"IRC 6:2017 Cl. 204.1 has no ground-contact dimension "
+                f"reference for vehicle class '{vehicle_class}' (expected "
+                f"one of {sorted(IRC6_2017._CONTACT_DIMENSION_REF)})"
+            ) from None
 
     @staticmethod
     def table_3(carriageway_width):
