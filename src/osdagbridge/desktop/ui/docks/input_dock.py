@@ -888,6 +888,9 @@ class InputDock(QWidget):
         self.design_btn.setDisabled(self.is_locked)
         self._sync_lock_icon()
 
+        if not self.is_locked:
+            self.backend.design_completed = False
+
     def _apply_lock_state(self):
         self._sync_lock_icon()
 

@@ -297,6 +297,43 @@ class ReportOptionsDialog(QDialog):
         layout.addWidget(hint_lbl)
 
         self.tree = QTreeWidget()
+        self.tree.setStyleSheet("""
+            QTreeWidget {
+                border: 1px solid #d0d0d0;
+                border-radius: 6px;
+                background-color: #ffffff;
+                outline: 0;
+            }
+            QTreeWidget::item {
+                padding: 4px 0px;
+                color: #1f1f1f;
+            }
+            QTreeWidget::item:disabled {
+                color: #8a8a8a;
+            }
+            QTreeWidget::item:selected,
+            QTreeWidget::item:hover {
+                background: transparent;
+                color: #1f1f1f;
+            }
+            QTreeWidget::indicator {
+                width: 16px;
+                height: 16px;
+                border: 1px solid #333333;
+                border-radius: 3px;
+                background-color: #ffffff;
+            }
+            QTreeWidget::indicator:hover {
+                border: 1px solid #555555;
+            }
+            QTreeWidget::indicator:checked {
+                image: url(:/vectors/checked.svg);
+            }
+            QTreeWidget::indicator:disabled {
+                border: 1px solid #b0b0b0;
+                background-color: #f0f0f0;
+            }
+        """)
         self.tree.setHeaderHidden(True)
         self.tree.setRootIsDecorated(False)
         layout.addWidget(self.tree)

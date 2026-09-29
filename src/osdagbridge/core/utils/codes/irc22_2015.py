@@ -1641,9 +1641,9 @@ class IRC22_2014:
     @staticmethod
     def cl_606_3_2_stud_connector_fatigue_strength(
         Nsc,
-        tau_fn_MPa=67.0,       # MPa (default per IRC Table 5/8 guidance)
-        stud_d_mm=None,        # 16, 20, 22, 25 (optional for Table 8)
-        use_table8=False       # if True, return Qr from Table 8 also
+        stud_d_mm,     
+        use_table8=False,        # stud shank diameter (mm)
+        tau_fn_MPa=67.0,       # MPa (Cl.605.3 shear fatigue strength at 5e6 cycles)
     ):
         """
         IRC:22-2015
@@ -1652,20 +1652,29 @@ class IRC22_2014:
         Equation:
             tau_f = tau_fn * (5e6 / Nsc)^(1/5)
 
-        Optional:
-            Returns Table 8 nominal fatigue strength Qr (kN) for headed studs (phi 16/20/22/25)
-            using log interpolation for intermediate Nsc.
+        Fatigue strength of one stud (shank area):
+            Qr = tau_f * pi * d^2 / 4
+
+        Valid for any stud diameter (Table 8 only tabulates 16/20/22/25 and is
+        reproduced by this equation within rounding).
         """
 
 
         if Nsc <= 0:
             raise ValueError("Nsc must be positive")
 
+        if stud_d_mm is None or stud_d_mm <= 0:
+            raise ValueError("stud_d_mm must be positive")
+
         # --- Clause equation ---
         tau_f_MPa = tau_fn_MPa * ((5e6 / Nsc) ** (1.0 / 5.0))
 
-        result = {
+        A_shank_mm2 = math.pi * (stud_d_mm ** 2) / 4.0
+        Qr_kN = tau_f_MPa * A_shank_mm2 / 1000.0
+
+        return {
             "tau_f_MPa": round(tau_f_MPa, 3),
+            "Qr_kN": round(Qr_kN, 3),
             "clause": "IRC 22:2015 - 606.3.2"
         }
 

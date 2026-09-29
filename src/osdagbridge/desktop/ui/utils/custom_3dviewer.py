@@ -7,14 +7,14 @@ from PySide6.QtGui  import QColor, QFont, QPainter, QPen, QPolygon
 from PySide6.QtWidgets import QApplication, QRubberBand, QToolTip, QWidget
 
 from OCC.Display import backend
-backend.load_backend("pyside6")
+from osdagbridge.desktop.__config__ import CAD_BACKEND
+backend.load_backend(CAD_BACKEND)
 
 from OCC.Display.qtDisplay import qtViewer3d
 from navcube import NavCubeOverlay, NavCubeStyle
 from navcube.connectors.occ import OCCNavCubeSync
 
 from osdagbridge.desktop.ui.utils.cad_safety import CADSafetyGuard
-
 
 # =============================================================================
 # OCC-FREE AXIS TRIAD OVERLAY  (drawing is pure QPainter; camera sync via poll)

@@ -1531,9 +1531,9 @@ class TransverseMemberDesign(QDialog):
                     slnd    = res.get("slenderness")
                     conn    = res.get("connection") or "—"
 
-                    cap_str  = f"{cap_kn:.2f}" if cap_kn is not None else "—"
-                    eff_str  = f"{eff:.3f}"    if eff    is not None else "—"
-                    slnd_str = f"{slnd:.1f}"   if slnd   is not None else "—"
+                    cap_str  = cap_kn if cap_kn is not None else "—"
+                    eff_str  = eff    if eff    is not None else "—"
+                    slnd_str = slnd   if slnd   is not None else "—"
 
                     status_color, status = self._design_status(res)
 

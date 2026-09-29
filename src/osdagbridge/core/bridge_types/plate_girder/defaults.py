@@ -15,6 +15,7 @@ from osdagbridge.core.utils.codes.keyfile import (
     KEY_RIGID_CRASH_BARRIER_TYPE,
 )
 from osdagbridge.core.utils.common import (
+    KEY_MODULE_PLATE_GIRDER, KEY_MODULE,
     DEFAULT_GIRDER_SPACING,
     DEFAULT_RAILING_WIDTH,
     KEY_TS_GIRDER_SPACING, KEY_TS_NO_OF_GIRDERS, KEY_TS_DECK_OVERHANG, KEY_TS_OVERALL_WIDTH,
@@ -148,6 +149,7 @@ concrete_properies = connectdb("Concrete_Grade_Properties")
 BASIC_INPUT_DICT = {
 
     # Input Dock Defaults
+    KEY_MODULE: KEY_MODULE_PLATE_GIRDER,
     KEY_STRUCTURE_TYPE: "Highway Bridge",
     KEY_PROJECT_LOCATION: None,  # Required field will be none by default
     KEY_SPAN: None,
@@ -209,7 +211,7 @@ def _update_typical_section_defaults(input_dict: dict) -> None:
     # --- Deck Detail sub-tab ---
     _update(KEY_TS_DECK_THICKNESS,     250.0)                        # mm
     _update(KEY_TS_FOOTPATH_WIDTH,     IS_DEFAULT_FOOTPATH_WIDTH_M)  # m
-    _update(KEY_TS_FOOTPATH_THICKNESS, 100.0)                        # mm
+    _update(KEY_TS_FOOTPATH_THICKNESS, 250.0)                        # mm
 
     # --- Crash Barrier sub-tab ---
     _cb_dims = IRC5_2015.cl_109_6_3_shapes(

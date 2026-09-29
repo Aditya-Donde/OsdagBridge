@@ -666,6 +666,10 @@ def ch5_design_checks(checks_data, bridge) -> str:
     # Table 5.12 – Supporting Calculations
     # ------------------------------------------------------------------
 
+    # The flat KEY_SD_FATIGUE_* values belong to the controlling girder only,
+    # while Table 5.12 rows are per-girder — so name the girder in the text.
+    _fat_g_ref = f" ({_tex(str(_ctrl_girder))})" if _ctrl_girder else ""
+
     _fat_stress_range = _dr_511.get(KEY_SD_FATIGUE_STRESS_RANGE_MPA)
     _fat_mu_r         = _dr_511.get(KEY_SD_FATIGUE_MU_R)
     _fat_gamma_mft    = bridge.output_dict.get(KEY_DO_GAMMA_MF)
@@ -682,7 +686,11 @@ def ch5_design_checks(checks_data, bridge) -> str:
     \medskip
     \noindent\textbf{{Supporting Calculations}}
     \small
-    Illustrative fatigue calculation corresponding to the reported assessment.
+    Fatigue calculation for the controlling girder{_fat_g_ref}. $\Delta\sigma$ is the
+    normal stress RANGE at the worst section produced by the fatigue vehicle
+    (IRC:6 Cl.204.6) traversing the span, referred to the short-term composite
+    section modulus --- not the total stress under any single load combination.
+    The remaining girders are listed row-wise in the table above.
 
     \normalsize
 
@@ -770,7 +778,7 @@ def ch5_design_checks(checks_data, bridge) -> str:
     g_summary_table_content = "\n".join(g_summary_rows)
 
     # ── Table 5.14: Shear Connector Capacity (bridge-level) ──────────────────
-    # Qu (Cl.606.3.1, Eq.6.1) and Qr (Cl.606.3.2, Table 8) are single per-stud
+    # Qu (Cl.606.3.1, Eq.6.1) and Qr (Cl.606.3.2) are single per-stud
     # values for the bridge, stored flat inside output_dict["design_results"].
     _dr_sc = bridge.output_dict.get("design_results", {}) or {}
 
@@ -782,8 +790,8 @@ def ch5_design_checks(checks_data, bridge) -> str:
         r"Design Resistance, $Q_u$ & \footnotesize\makecell{$Q_u=\min(Q_{u,s},\,Q_{u,c})$\\[3pt]$Q_{u,s}=\dfrac{0.8\,f_u\,(\pi d^2/4)}{\gamma_v}$\\[3pt]$Q_{u,c}=\dfrac{0.29\,\alpha\,d^2\sqrt{f_{ck}\,E_{cm}}}{\gamma_v}$} & "
         + _kn(_dr_sc.get(KEY_SD_SC_Qu_kN)) + r""" & IRC 22 Cl. 606.3.1 (Eq. 6.1) \\[6pt]
 \hline
-Fatigue Shear Resistance, $Q_r$ & IRC 22 Table 8 ($\phi d$, $N_{sc}$) & """
-        + _kn(_dr_sc.get(KEY_SD_SC_Qr_kN)) + r""" & IRC 22 Cl. 606.3.2 (Table 8) \\[6pt]
+Fatigue Shear Resistance, $Q_r$ & \footnotesize\makecell{$Q_r=\tau_f\,(\pi d^2/4)$\\[3pt]$\tau_f=\tau_{fn}\left(5\times10^6/N_{sc}\right)^{1/5}$} & """
+        + _kn(_dr_sc.get(KEY_SD_SC_Qr_kN)) + r""" & IRC 22 Cl. 606.3.2 \\[6pt]
 \hline"""
     )
 
@@ -1625,7 +1633,7 @@ The reinforced concrete deck slab is designed per IRC~112:2011 (flexure, shear, 
 \hline
 \multirow{7}{*}{\makecell{At Midspan\\(Sagging)}} & Transverse BM (DL), $M_{T,DL}$ & $w_{DL}\,l_{eff}^2/10$ & """ + _dkf(KEY_DD_M_DL, nd=2) + r""" kN-m/m & --- \\[6pt]
 \cline{2-5}
- & Transverse BM (LL), $M_{T,LL}$ & Effective width (IRC 112 B3.1) & """ + _dkf(KEY_DD_M_LL, nd=2) + r""" kN-m/m & --- \\[6pt]
+ & Transverse BM (LL), $M_{T,LL}$ & Effective width (IRC 112 Cl. B3.2, Eq. B3.1) & """ + _dkf(KEY_DD_M_LL, nd=2) + r""" kN-m/m & --- \\[6pt]
 \cline{2-5}
  & Total Design BM, $M_{u,sag}$ & """ + _dkf(KEY_DD_GAMMA_DL, nd=2) + r""" DL + """ + _dkf(KEY_DD_GAMMA_LL, nd=2) + r""" LL & """ + _dkf(KEY_DD_M_ULS_SAG, nd=2) + r""" kN-m/m & --- \\[6pt]
 \cline{2-5}
@@ -1660,7 +1668,7 @@ The reinforced concrete deck slab is designed per IRC~112:2011 (flexure, shear, 
 \hline
 Overhang Length, $l_{oh}$ & --- & """ + _render_value(bridge.input_dict, KEY_TS_DECK_OVERHANG, " m") + r""" & --- \\[6pt]
 \hline
-Crash Barrier Load Moment & IRC 6 Cl. 206.4 & """ + _dkoh(KEY_DD_M_BARRIER, nd=2, unit=" kN-m/m") + r""" & --- \\[6pt]
+Crash Barrier Load Moment & IRC 6 Cl. 206.6 &""" + _dkoh(KEY_DD_M_BARRIER, nd=2, unit=" kN-m/m") + r""" & --- \\[6pt]
 \hline
 Railing Load, $w_{railing}$ & """ + _dkoh(KEY_DD_RAILING_LOAD_KGM, nd=0, unit=" kg/m") + r""" (IRC 6-2017 Cl. 206.5) & """ + _dkoh(KEY_DD_RAILING_LOAD_KNM, nd=4, unit=" kN/m") + r""" & --- \\[6pt]
 \hline
@@ -1694,10 +1702,10 @@ Live Load Moment (eccentric wheel), $M_{LL,oh}$ & $P_w\,e / b_{eff}$ & """ + _dk
 \hline
 Total Hogging Moment, $M_{u,oh}$ & """ + _dkf(KEY_DD_GAMMA_DL, nd=2) + r""" DL + """ + _dkf(KEY_DD_GAMMA_LL, nd=2) + r""" (LL + CB) & """ + _dkoh(KEY_DD_M_ULS_OH, nd=2, unit=" kN-m/m") + r""" & --- \\[6pt]
 \hline
-Moment Capacity (top steel), $M_{Rd,oh}$ & IRC 112 Cl. 12.2 & """ + _dkoh(KEY_DD_MU_OH, nd=2, unit=" kN-m/m") + r""" & """ + (_dks(_dkv(KEY_DD_MU_OH) >= _dkv(KEY_DD_M_ULS_OH)) if _dk_oh else ("N/A" if _dk_has else "---")) + r""" \\[6pt]
+Moment Capacity (top steel), $M_{Rd,oh}$ & IRC 112 Cl. 8.2.1 & """ + _dkoh(KEY_DD_MU_OH, nd=2, unit=" kN-m/m") + r""" & """ + (_dks(_dkv(KEY_DD_MU_OH) >= _dkv(KEY_DD_M_ULS_OH)) if _dk_oh else ("N/A" if _dk_has else "---")) + r""" \\[6pt]
 \hline
 \end{longtable}
-\noindent\textit{Note: IRC 6 Cl. 206.4 crash barrier loads applied at kerb face; IRC 112 Cl. 12.2 flexure.}
+\noindent\textit{Note: IRC 6 Cl. 206.6 crash barrier loads applied at kerb face; IRC 112 Cl. 8.2.1 flexure.}
 
 \vspace{1em}
 \begin{longtable}{|L{5.5cm}|C{3.5cm}|>{\centering\arraybackslash}p{4.5cm}|C{2cm}|}
@@ -1713,14 +1721,14 @@ Loaded Area at mid-depth, $b_0$ & $c_1 \times c_2$ (incl.\ WC dispersion) & """ 
 \hline
 Control Perimeter, $u_1$ & $2(c_1+c_2) + 4\pi d$ & """ + _dkf(KEY_DD_PUNCH_U1, nd=0) + r""" mm & --- \\[6pt]
 \hline
-Punching Shear Stress, $v_{Ed}$ & $V_{Ed} / (u_1\,d)$ & """ + _dkf(KEY_DD_PUNCH_VED, nd=3) + r""" MPa & --- \\[6pt]
+Punching Shear Stress, $v_{Ed}$ & $\beta\,V_{Ed} / (u_1\,d)$ & """ + _dkf(KEY_DD_PUNCH_VED, nd=3) + r""" MPa & --- \\[6pt]
 \hline
 Punching Resistance, $v_{Rd,c}$ & IRC 112 Eq.\ 10.1 & """ + _dkf(KEY_DD_VRD_C_MPA, nd=3) + r""" MPa & --- \\[6pt]
 \hline
 Punching Shear Check & $v_{Ed} \leq v_{Rd,c}$ & """ + (f"{_dkv(KEY_DD_PUNCH_VED) / _dkv(KEY_DD_VRD_C_MPA):.2f}" if (_dk_has and _dkv(KEY_DD_VRD_C_MPA) > 0) else _DKPH) + r""" & """ + _dks(bool(deck_rpt.get(KEY_DD_PUNCH_OK))) + r""" \\[6pt]
 \hline
 \end{longtable}
-\noindent\textit{Note: Punching shear reinforcement not typically required for deck slabs with $d \geq 200$ mm and adequate longitudinal reinforcement.}
+\noindent\textit{Note: $\beta = 1.0$ (IRC 112:2020 Cl.~10.4.3(1) --- axial wheel load without bending moment on the loaded area). Punching shear reinforcement not typically required for deck slabs with $d \geq 200$ mm and adequate longitudinal reinforcement.}
 
 \vspace{1em}
 \clearpage
@@ -1733,9 +1741,9 @@ Punching Shear Check & $v_{Ed} \leq v_{Rd,c}$ & """ + (f"{_dkv(KEY_DD_PUNCH_VED)
 \hline
 \textnormal{Provided Reinforcement (bottom)} & $\phi$""" + _dkf(KEY_DD_DIA_BOT, nd=0) + r""" @ """ + _dkf(KEY_DD_SPC_BOT, nd=0) + r""" mm c/c (""" + _dkf(KEY_DD_AS_BOT, nd=0) + r""" mm²/m) \\[6pt]
 \hline
-\textnormal{Max. Permissible Crack Width} & """ + _dkf(KEY_DD_WK_LIMIT, nd=2) + r""" mm \\[6pt]
+\textnormal{Max. Permissible Crack Width} & """ + _dkf(KEY_DD_WK_LIMIT, nd=2) + r""" mm [IRC 112 Cl. 12.3.2, Table 12.1] \\[6pt]
 \hline
-\textnormal{Calculated Crack Width, $w_k$ (governing)} & """ + _dk_gov_wk_str + r""" mm \\[6pt]
+\textnormal{Calculated Crack Width, $w_k$ (governing)} & """ + _dk_gov_wk_str + r""" mm [IRC 112 Cl. 12.3.4, Eq. 12.5] \\[6pt]
 \hline
 \textnormal{Crack Width Check} & """ + _dks(_dk_crack_ok) + r""" \\[6pt]
 \hline
@@ -1776,7 +1784,7 @@ Bar Diameter $\times$ Spacing & $\phi \geq 10$ mm (IRC 112) & $\phi$""" + _dkf(K
 \hline
 Min.\ Reinforcement $A_{s,min}$ (IRC 112 Cl. 16.3.1) & """ + _dkf(KEY_DD_AS_MIN, nd=0) + r""" mm²/m & """ + _dkf(KEY_DD_AS_BOT, nd=0) + r""" mm²/m & """ + _dks(_dkv(KEY_DD_AS_BOT) >= _dkv(KEY_DD_AS_MIN)) + r""" \\[6pt]
 \hline
-Max.\ Bar Spacing (IRC 112 Cl. 16.3.2) & """ + _dkf(KEY_DD_SPACING_MAX, nd=0) + r""" mm & """ + _dkf(KEY_DD_SPC_BOT, nd=0) + r""" mm & """ + _dks(0.0 < _dkv(KEY_DD_SPC_BOT) <= _dkv(KEY_DD_SPACING_MAX)) + r""" \\[6pt]
+Max.\ Bar Spacing (IRC 112 Cl. 16.6.1.1) & """ + _dkf(KEY_DD_SPACING_MAX, nd=0) + r""" mm & """ + _dkf(KEY_DD_SPC_BOT, nd=0) + r""" mm & """ + _dks(0.0 < _dkv(KEY_DD_SPC_BOT) <= _dkv(KEY_DD_SPACING_MAX)) + r""" \\[6pt]
 \hline
 \multicolumn{4}{|l|}{\textbf{Distribution Reinforcement --- Longitudinal}} \\[6pt]
 \hline

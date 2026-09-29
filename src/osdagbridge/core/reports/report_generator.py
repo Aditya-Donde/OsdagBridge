@@ -572,12 +572,12 @@ class ReportDataBridge:
     def get_cb_capacity(self, pair: str, member: str, force_type: str) -> str:
         """Capacity in kN."""
         val = self._cb_osdag(pair, member, force_type).get("capacity_kN")
-        return f"{float(val):.3f}" if val is not None else ""
+        return f"{val}" if val is not None else ""
 
     def get_cb_efficiency(self, pair: str, member: str, force_type: str) -> str:
         """Utilization ratio (efficiency)."""
         val = self._cb_osdag(pair, member, force_type).get("efficiency")
-        return f"{float(val):.3f}" if val is not None else ""
+        return f"{val}" if val is not None else ""
 
     def get_cb_slenderness(self, pair: str, member: str) -> str:
         """KL/r — same for tension and compression (geometry-based)."""
@@ -585,7 +585,7 @@ class ReportDataBridge:
         for ft in ("compression", "tension"):
             val = self._cb_osdag(pair, member, ft).get("slenderness")
             if val is not None:
-                return f"{float(val):.1f}"
+                return f"{val}"
         return ""
 
     def get_cb_status(self, pair: str, member: str, force_type: str) -> str:

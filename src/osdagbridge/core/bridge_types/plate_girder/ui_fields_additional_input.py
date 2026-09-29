@@ -1,7 +1,7 @@
 # Main schema: ADDITIONAL_INPUTS_SCHEMA (bottom of file)
 
 from osdagbridge.core.utils.common import *
-from osdagbridge.core.bridge_types.plate_girder.initial_sizing import KEY_MAX_CAMBER_M
+from osdagbridge.core.bridge_types.plate_girder.initial_sizing import KEY_MAX_CAMBER_MM
 
 
 # ── Typical Section Details Tab ───────────────────────────────────────────────
@@ -1501,7 +1501,11 @@ DESIGN_OPTIONS_CONT_SCHEMA = {
             "title":    "Design Options",
             "row_span": 3,
             "text":   (
-                    "Deflection limit considered for live load case is L/800 and for DL+LL case is L/600 per IRC 6."
+                "Default values for partial factors are per IRC 22, and the default number of fatigue load cycles is per IRC 6.\n\n"
+                "Deflection limits per IRC 6: L/800 for live load alone, L/600 for DL+LL.\n\n"
+                "Camber operates in two modes:\n"
+                "• Default — camber equals the dead load deflection, where DL comprises self-weight (SW), dead load on steel (DC), deck dead load (DD), and superimposed dead load (SIDL), excluding the wearing surface (DW).\n"
+                "• Custom — the user specifies the camber value directly."
             ),
         },
 
@@ -1530,12 +1534,12 @@ DESIGN_OPTIONS_CONT_SCHEMA = {
                 {
                     "fields": [{
                         "id":           KEY_DO_CAMBER,
-                        "label":        "Camber (m)",
+                        "label":        "Camber (mm)",
                         "type":         TYPE_MODE_LINE,
                         "mode_choices": ["Default", "Custom"],
                         "bind_mode":    "camber_mode_combo",
                         "bind_value":   "camber_value_input",
-                        "placeholder":  f"0 - {KEY_MAX_CAMBER_M:g}",
+                        "placeholder":  f"0 - {KEY_MAX_CAMBER_MM:g}",
                     }]
                 },
             ],

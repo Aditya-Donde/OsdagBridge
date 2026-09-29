@@ -591,8 +591,8 @@ class OutputDock(QWidget):
 
     def _require_design(self) -> bool:
         """Return True if a design result is available; show an error and return False otherwise."""
-        input_dock = getattr(self.parent, "input_dock", None)
-        if input_dock is None or not input_dock.is_locked:
+        backend = self.parent.backend
+        if not backend.design_completed:
             CustomMessageBox(
                 title="Run Design",
                 text="Please run the design first.",
@@ -601,7 +601,7 @@ class OutputDock(QWidget):
             return False
         return True
 
-    def _on_report_clicked(self):
+    def _capture_data(self):
         """
         Resolve Qt-side objects then delegate entirely to
         template_page.open_report_dialog(). OutputDock owns
@@ -615,10 +615,7 @@ class OutputDock(QWidget):
         # Find cad_3d_widget
         cad_3d_widget = None
         main_window = self.parent
-        while main_window and not hasattr(main_window, 'cad_3d_widget'):
-            main_window = getattr(main_window, 'parent', None)
-        if main_window and hasattr(main_window, 'cad_3d_widget'):
-            cad_3d_widget = main_window.cad_3d_widget
+        cad_3d_widget = main_window.cad_3d_widget
 
         # Capture figures on the main thread — bytes only, nothing written to disk
         cad_generator = None
@@ -769,14 +766,15 @@ class OutputDock(QWidget):
                 'figure_data': figure_data,
             }
             # figure_data local var goes out of scope here; cad_generator holds the only ref
+            
+        return cad_generator
 
+    def _on_report_clicked(self):
+        """Open the report dialog, passing the CAD generator and captured figures."""
         # Find dialog host and trigger
+        cad_generator = self._capture_data()
         main_window = self.parent
-        while main_window and not hasattr(main_window, 'open_report_dialog'):
-            main_window = getattr(main_window, 'parent', None)
-        if main_window and hasattr(main_window, 'open_report_dialog'):
-            main_window.open_report_dialog(cad_generator=cad_generator)
-
+        main_window.open_report_dialog(cad_generator=cad_generator)
 
     def reset(self):
         """Reset output dock to blank defaults when the lock is released."""
@@ -947,7 +945,4 @@ class OutputDock(QWidget):
         output_dict = dict(getattr(self.backend, 'output_dict'))
         dlg = GenerateResultsDialog(parent=None, output_dict=output_dict)
         dlg.exec()
-
-
-
 
