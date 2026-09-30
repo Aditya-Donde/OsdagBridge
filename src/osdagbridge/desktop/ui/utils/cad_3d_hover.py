@@ -78,6 +78,8 @@ from osdagbridge.core.utils.common import (
     KEY_MP_ED_DIAGONAL_LEG_H, KEY_MP_ED_DIAGONAL_LEG_W, KEY_MP_ED_DIAGONAL_THICKNESS,
     KEY_MP_ED_TOP_CHORD_LEG_H, KEY_MP_ED_TOP_CHORD_LEG_W, KEY_MP_ED_TOP_CHORD_THICKNESS,
     KEY_MP_ED_BOTTOM_CHORD_LEG_H, KEY_MP_ED_BOTTOM_CHORD_LEG_W, KEY_MP_ED_BOTTOM_CHORD_THICKNESS,
+    KEY_TD_CB_PROP_L, KEY_TD_CB_TOP_CHORD_PROP_L, KEY_TD_CB_BOTTOM_CHORD_PROP_L,
+    KEY_TD_ED_PROP_L, KEY_TD_ED_TOP_CHORD_PROP_L, KEY_TD_ED_BOTTOM_CHORD_PROP_L,
 )
 from osdagbridge.core.bridge_components.super_structure.cross_bracing.builder import (
     ROLE_DIAGONAL, ROLE_TOP_CHORD, ROLE_BOTTOM_CHORD, ROLE_NAMES,
@@ -836,7 +838,7 @@ def _present(value):
     return value is not None and value != ""
 
 
-def _resolve(output_dict, base_key, pair_id):
+def _resolve(output_dict, base_key, pair_id, input_first=False):
     """Look up one value for one girder pair.
 
     The same value can be stored under three different key shapes depending on which
@@ -848,17 +850,20 @@ def _resolve(output_dict, base_key, pair_id):
 
     Tried most specific first.  Taking the first member is correct: extend_cb_dynamic_keys()
     in defaults.py writes every member of a pair identically, so M1..Mn always agree.
+
+    ``input_first`` swaps 1 and 2.  The section type needs it: the design phase
+    overwrites it with the bare database family ("ANGLE"), while the input form holds
+    what the user chose ("Double Angle (Long Leg)") — and the builder draws the latter.
     """
     if pair_id:
         exact = f"{base_key}.{pair_id}"
-        value = output_dict.get(exact)
-        if _present(value):
-            return value
-
         prefix = exact + "."
-        for key in sorted(k for k in output_dict if k.startswith(prefix)):
-            if _present(output_dict[key]):
-                return output_dict[key]
+        member_keys = sorted(k for k in output_dict if k.startswith(prefix))
+        candidates = member_keys + [exact] if input_first else [exact] + member_keys
+        for key in candidates:
+            value = output_dict.get(key)
+            if _present(value):
+                return value
 
     value = output_dict.get(base_key)
     return value if _present(value) else None
@@ -881,21 +886,24 @@ def _pair_label(pair_id):
     return f"G{head} to G{tail}" if head and tail else pair_id
 
 
-# Per role: (section type key, designation key, leg_h, leg_w, thickness).
+# Per role: (section type key, designation key, leg_h, leg_w, thickness, designed L).
 # The type and dimension entries must stay in step with the lookups in
 # cross_bracing/builder.py, so the label and the drawn shape describe the same section.
 _CB_ROLE_KEYS = {
     ROLE_DIAGONAL: (
         KEY_MP_CB_BRACING_SECTION_TYPE, KEY_MP_CB_BRACING_SECTION_DESIGNATION,
         KEY_MP_CB_DIAGONAL_LEG_H, KEY_MP_CB_DIAGONAL_LEG_W, KEY_MP_CB_DIAGONAL_THICKNESS,
+        KEY_TD_CB_PROP_L,
     ),
     ROLE_TOP_CHORD: (
         KEY_MP_CB_TOP_CHORD_SECTION_TYPE, KEY_MP_CB_TOP_CHORD_SECTION_DESIG,
         KEY_MP_CB_TOP_CHORD_LEG_H, KEY_MP_CB_TOP_CHORD_LEG_W, KEY_MP_CB_TOP_CHORD_THICKNESS,
+        KEY_TD_CB_TOP_CHORD_PROP_L,
     ),
     ROLE_BOTTOM_CHORD: (
         KEY_MP_CB_BOTTOM_CHORD_SECTION_TYPE, KEY_MP_CB_BOTTOM_CHORD_SECTION_DESIG,
         KEY_MP_CB_BOTTOM_CHORD_LEG_H, KEY_MP_CB_BOTTOM_CHORD_LEG_W, KEY_MP_CB_BOTTOM_CHORD_THICKNESS,
+        KEY_TD_CB_BOTTOM_CHORD_PROP_L,
     ),
 }
 
@@ -903,29 +911,50 @@ _ED_ROLE_KEYS = {
     ROLE_DIAGONAL: (
         KEY_MP_ED_BRACING_SECTION, KEY_MP_ED_BRACING_SECTION_DESIGNATION,
         KEY_MP_ED_DIAGONAL_LEG_H, KEY_MP_ED_DIAGONAL_LEG_W, KEY_MP_ED_DIAGONAL_THICKNESS,
+        KEY_TD_ED_PROP_L,
     ),
     ROLE_TOP_CHORD: (
         KEY_MP_ED_TOP_CHORD_SECTION_TYPE, KEY_MP_ED_TOP_CHORD_SECTION_DESIG,
         KEY_MP_ED_TOP_CHORD_LEG_H, KEY_MP_ED_TOP_CHORD_LEG_W, KEY_MP_ED_TOP_CHORD_THICKNESS,
+        KEY_TD_ED_TOP_CHORD_PROP_L,
     ),
     ROLE_BOTTOM_CHORD: (
         KEY_MP_ED_BOTTOM_CHORD_SECTION_TYPE, KEY_MP_ED_BOTTOM_CHORD_SECTION_DESIG,
         KEY_MP_ED_BOTTOM_CHORD_LEG_H, KEY_MP_ED_BOTTOM_CHORD_LEG_W, KEY_MP_ED_BOTTOM_CHORD_THICKNESS,
+        KEY_TD_ED_BOTTOM_CHORD_PROP_L,
     ),
 }
 
 
-def _section_line(output_dict, pair_id, type_key, desig_key):
-    """'CHANNEL (JC 100)', falling back to whichever half is available."""
-    sec_type = _resolve(output_dict, type_key, pair_id)
-    desig    = _resolve(output_dict, desig_key, pair_id)
+def _section_lines(output_dict, pair_id, type_key, desig_key):
+    """['Section: Double Angle (Long Leg)', 'Designation: ∠ 100 x 100x 10'].
 
-    sec_type = str(sec_type).strip().upper() if _present(sec_type) else ""
-    desig    = str(desig).strip()            if _present(desig)    else ""
+    Both are read input-first so the label shows what the user chose, not the bare
+    database family the design phase writes over it.
+    """
+    sec_type = _resolve(output_dict, type_key, pair_id, input_first=True)
+    desig    = _resolve(output_dict, desig_key, pair_id, input_first=True)
 
-    if sec_type and desig:
-        return f"{sec_type} ({desig})"
-    return sec_type or desig or "not designed"
+    lines = [f"Section: {str(sec_type).strip() if _present(sec_type) else 'not designed'}"]
+    if _present(desig):
+        lines.append(f"Designation: {str(desig).strip()}")
+    return lines
+
+
+def _leg_width(output_dict, pair_id, type_key, w_key, l_key):
+    """Leg width in mm, as display text.
+
+    For angles the design phase writes the thickness into the leg_w key, because
+    _query_crossbracing_section() keeps an angle's thickness under "B".  The long leg
+    it keeps under "L", saved as the PROP_L key in metres, so read the width from there.
+    """
+    designed_type = output_dict.get(f"{type_key}.{pair_id}")
+    if str(designed_type).strip().upper() == "ANGLE":
+        try:
+            return _fmt_mm(float(output_dict.get(f"{l_key}.{pair_id}")) * 1e3)
+        except (TypeError, ValueError):
+            pass
+    return _fmt_mm(_resolve(output_dict, w_key, pair_id))
 
 
 def _bracing_member_label(output_dict, component, pair_id, role):
@@ -941,11 +970,11 @@ def _bracing_member_label(output_dict, component, pair_id, role):
              f"Location: {_pair_label(pair_id)}"]
 
     if role in role_keys:
-        type_key, desig_key, h_key, w_key, t_key = role_keys[role]
-        lines.append(f"Section: {_section_line(output_dict, pair_id, type_key, desig_key)}")
+        type_key, desig_key, h_key, w_key, t_key, l_key = role_keys[role]
+        lines.extend(_section_lines(output_dict, pair_id, type_key, desig_key))
 
         leg_h = _fmt_mm(_resolve(output_dict, h_key, pair_id))
-        leg_w = _fmt_mm(_resolve(output_dict, w_key, pair_id))
+        leg_w = _leg_width(output_dict, pair_id, type_key, w_key, l_key)
         if leg_h and leg_w:
             lines.append(f"Leg H x W: {leg_h} x {leg_w}")
         thickness = _fmt_mm(_resolve(output_dict, t_key, pair_id))
