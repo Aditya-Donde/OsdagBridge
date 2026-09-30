@@ -135,8 +135,11 @@ from osdagbridge.core.utils.common import (
     KEY_SD_SHEAR_VU,
     KEY_SD_STIFF_END_COUNT,
     KEY_SD_STIFF_END_THICK,
+    KEY_SD_STIFF_END_THICK_REQ,
     KEY_SD_STIFF_INT_SPACING,
+    KEY_SD_STIFF_INT_SPACING_REQ,
     KEY_SD_STIFF_INT_THICK,
+    KEY_SD_STIFF_INT_THICK_REQ,
     KEY_SD_STIFF_LONG,
     KEY_SD_STIFF_METHOD,
     KEY_SD_STRESS_STEEL,
@@ -381,13 +384,19 @@ def ch5_design_checks(checks_data, bridge) -> str:
     t57_rows = []
     for lbl, _ in girder_entries:
         t57_rows.append(
-            r"\multirow{6}{*}{\makecell{" + lbl + r"""}} & \textnormal{Shear Buckling Design Method} & """ + str(_render_value(bridge.output_dict, KEY_SD_STIFF_METHOD)).replace("_", " ").title() + r""" \\[6pt]
+            r"\multirow{9}{*}{\makecell{" + lbl + r"""}} & \textnormal{Shear Buckling Design Method} & """ + str(_render_value(bridge.output_dict, KEY_SD_STIFF_METHOD)).replace("_", " ").title() + r""" \\[6pt]
 \cline{2-3}
- & \textnormal{Intermediate Stiffener Thickness (mm)} & """ + _render_value(bridge.output_dict, KEY_SD_STIFF_INT_THICK) + r""" \\[6pt]
+ & \textnormal{Provided Intermediate Stiffener Thickness (mm)} & """ + _render_value(bridge.output_dict, KEY_SD_STIFF_INT_THICK) + r""" \\[6pt]
 \cline{2-3}
- & \textnormal{Intermediate Stiffener Spacing (mm)} & """ + _render_value(bridge.output_dict, KEY_SD_STIFF_INT_SPACING) + r""" \\[6pt]
+ & \textnormal{Required Intermediate Stiffener Thickness (mm)} & """ + _render_value(bridge.output_dict, KEY_SD_STIFF_INT_THICK_REQ) + r""" \\[6pt]
 \cline{2-3}
- & \textnormal{End Panel Stiffener Thickness (mm)} & """ + _render_value(bridge.output_dict, KEY_SD_STIFF_END_THICK) + r""" \\[6pt]
+ & \textnormal{Provided Intermediate Stiffener Spacing (mm)} & """ + _render_value(bridge.output_dict, KEY_SD_STIFF_INT_SPACING) + r""" \\[6pt]
+\cline{2-3}
+ & \textnormal{Required Intermediate Stiffener Spacing (mm)} & """ + _render_value(bridge.output_dict, KEY_SD_STIFF_INT_SPACING_REQ) + r""" \\[6pt]
+\cline{2-3}
+ & \textnormal{Provided Bearing (End Panel) Stiffener Thickness (mm)} & """ + _render_value(bridge.output_dict, KEY_SD_STIFF_END_THICK) + r""" \\[6pt]
+\cline{2-3}
+ & \textnormal{Required Bearing (End Panel) Stiffener Thickness (mm)} & """ + _render_value(bridge.output_dict, KEY_SD_STIFF_END_THICK_REQ) + r""" \\[6pt]
 \cline{2-3}
  & \textnormal{No. of End Panel Stiffeners} & """ + _render_value(bridge.output_dict, KEY_SD_STIFF_END_COUNT) + r""" \\[6pt]
 \cline{2-3}
