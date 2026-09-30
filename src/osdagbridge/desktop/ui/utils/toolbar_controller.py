@@ -178,15 +178,13 @@ class ToolBarController:
         self._btn_legend:        QPushButton | None = self._find_button(self._TIP_LEGEND)
 
         # Managed toggle buttons — bulk checkable/restore in reset() and bind_to_*()
-        # NOTE: _btn_loads is intentionally excluded — it is never made checkable,
-        #       it is simply hidden in CAD view and shown in Plots view.
         self._managed_buttons: list[QPushButton] = [
             b for b in (
                 self._btn_grillage, self._btn_node, self._btn_node_number,
                 self._btn_element_number,
                 self._btn_zoom_win, self._btn_pan, self._btn_rotate,
                 self._btn_axis, self._btn_legend, self._btn_grid, self._btn_supports,
-                self._btn_girder_labels,
+                self._btn_loads, self._btn_girder_labels,
             )
             if b is not None
         ]
@@ -965,3 +963,20 @@ class ToolBarController:
         self._connect(self._btn_zoom_fit, plots_widget._zoom_reset)
         self._connect(self._btn_zoom_in,  plots_widget._zoom_in)
         self._connect(self._btn_zoom_out, plots_widget._zoom_out)
+
+        # ── Loads — toggle arrow/force display on the plot ───────────────────
+        loads_init = plots_widget._load_mode != "off" if hasattr(plots_widget, "_load_mode") else False
+        self._make_checkable(self._btn_loads, loads_init)
+
+        def _plots_toggle_loads():
+            try:
+                checked = self._btn_loads.isChecked()
+                plots_widget._load_mode = "all" if checked else "off"
+                self._sync_btn_to(self._btn_loads, checked)
+                # Loads are shown on the plots (inherent grillage grid) and, in the
+                # exclusive grillage view, on the standalone grillage figure.
+                plots_widget.update_plot()
+            except Exception:
+                pass
+
+        self._connect(self._btn_loads, _plots_toggle_loads)

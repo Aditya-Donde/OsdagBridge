@@ -159,6 +159,101 @@ def _build_polyline(elems, members, nodes, force_i, force_j, ds):
     return np.array(xs), np.array(ys), np.array(zs), np.array(vals), node_ids
 
 
+def get_nodal_loads(result_data: dict, loadcase: str, axis: str = "Y") -> dict:
+    """
+    Compute applied nodal loads (kN) for a given loadcase along the specified
+    axis ("X", "Y" or "Z").
+
+    Uses element-end equilibrium:
+        F_applied(node) = −Σ V_axis_end / 1000   (N → kN)
+
+    Only the requested axis is accumulated, so this is a single pass over the
+    elements with no nested-dict overhead.
+    """
+    forces  = result_data.get("forces", {}).get(loadcase, {})
+    members = result_data.get("members", {})
+    accum: dict = {}
+
+    # Map the requested UI axis to the result_data component key.
+    comp = f"V{axis.lower()}"   # 'x' -> 'Vx', 'y' -> 'Vy', 'z' -> 'Vz'
+
+    for eid_str, end_f in forces.items():
+        nids = members.get(eid_str, [])
+        if len(nids) < 2:
+            continue
+        n1, n2 = int(nids[0]), int(nids[1])
+        # End shears in N, converted to kN.
+        vi = float(end_f.get(f"{comp}_i", 0.0)) / 1000.0
+        vj = float(end_f.get(f"{comp}_j", 0.0)) / 1000.0
+        # Accumulate equilibrium (flip sign).
+        accum[n1] = accum.get(n1, 0.0) - vi
+        accum[n2] = accum.get(n2, 0.0) - vj
+    return accum
+
+def get_all_nodal_loads(result_data: dict, loadcase: str) -> dict:
+    """Return nodal loads for all three directions.
+    Uses the existing get_nodal_loads() calculation independently for
+    X, Y and Z. No structural/load calculation is changed.
+    """
+    return {
+        "X": get_nodal_loads(result_data, loadcase, "X"),
+        "Y": get_nodal_loads(result_data, loadcase, "Y"),
+        "Z": get_nodal_loads(result_data, loadcase, "Z"),
+    }
+
+def _add_nodal_load_arrows(ax, nodes, nodal_loads, x_range, load_mode, eng_scale=1.0):
+    """Draw nodal load arrows for all available directions.
+    nodal_loads is:
+        {"X": {node_id: value}, "Y": {node_id: value}, "Z": {node_id: value},}
+    Load calculations are performed by get_nodal_loads().
+    This function only handles visualization.
+    """
+    if load_mode == "off" or not nodal_loads:
+        return
+    F = 0.12
+    zlo, zhi = ax.get_zlim()
+    h = max(abs(zhi - zlo), 1e-9) * F
+    h_x = max((abs(ax.get_xlim()[1] - ax.get_xlim()[0]) or float(x_range) or 1.0) * F, 1e-6)
+    h_z = max((abs(ax.get_ylim()[1] - ax.get_ylim()[0]) or 1.0) * F, 1e-6)
+    ax.set_zlim(zlo, max(zhi, h * 1.65))
+    directions = {
+        "X": (h_x, 0, 0, 1.25),
+        "Y": (0, 0, h, 1.35),
+        "Z": (0, h_z, 0, 1.25),
+    }
+    for axis, axis_loads in nodal_loads.items():
+        if axis not in directions or not axis_loads:
+            continue
+        dx, dy, dz, label_offset = directions[axis]
+        for nid, val in axis_loads.items():
+            val = float(val)
+            if abs(val) < 0.01:
+                continue
+            coord = nodes.get(int(nid)) or nodes.get(str(nid))
+            if not coord:
+                continue
+            x, _, z = coord
+            s = 1.0 if val >= 0 else -1.0
+            color = "#C62828" if val < 0 else "#00897B"
+            _draw_camera_arrow(
+                ax,
+                (x, z, 0),
+                (x + s * dx, z + s * dy, s * dz),
+                color=color, lw=2.0, gid="nodal_loads",
+                mutation_scale=14, alpha=0.85,
+            )
+            ax.text(
+                x + s * dx * label_offset,
+                z + s * dy * label_offset,
+                s * dz * label_offset,
+                f"{val:+.1f} kN",
+                color=color, fontsize=7, ha="center", va="center",
+                alpha=0.85, zorder=12, gid="nodal_loads",
+                bbox=dict(boxstyle="round,pad=0.12", facecolor="white", alpha=0.6, edgecolor="none"),
+            )
+
+
+
 # =============================================================================
 # DRAWING HELPERS (matplotlib 3-D)
 # =============================================================================
@@ -167,17 +262,26 @@ def _add_grillage_background(
     ax,
     nodes,
     members,
-    x_tol=3,
-    z_tol=3,
     show_transverse=False,
     include_edge_longitudinals=True,
     include_end_transverse=True,
     show_inner_nodes=True,
+    include_inner_longitudinals=True,
+    gid=None,
 ):
     """
     Draw the structural grid using actual member connectivity.
     Uses the members dict (element → [n1, n2]) so that skewed bridges
     where nodes are shifted longitudinally still render correctly.
+
+    include_inner_longitudinals : bool
+        When False, the inner (non-edge) girder centre-lines are skipped.
+        The force builders draw those as their always-on base, so the
+        grillage *overlay* pass (gid="grillage") sets this False to avoid
+        drawing them a second time.
+    gid : str | None
+        Tag applied to every line/scatter drawn here so callers can toggle
+        the whole grid's visibility by gid (see MplPlotWidget grillage toggle).
     """
     # Colour scheme (same as before)
     long_kw  = dict(color="#388E3C", linewidth=1.0, alpha=0.3, zorder=1)
@@ -232,11 +336,13 @@ def _add_grillage_background(
     # 2. DRAW LONGITUDINAL LINES (green, along span)
     # ================================================================
     for x1, z1, x2, z2 in long_members:
-        # Skip outermost girders when requested
-        if not include_edge_longitudinals:
-            if abs(z1 - edge_z_min) < TOL or abs(z1 - edge_z_max) < TOL:
-                continue
-        ax.plot([x1, x2], [z1, z2], [0, 0], **long_kw)
+        is_edge = abs(z1 - edge_z_min) < TOL or abs(z1 - edge_z_max) < TOL
+        # Skip outermost girders / inner girders when requested
+        if is_edge and not include_edge_longitudinals:
+            continue
+        if (not is_edge) and not include_inner_longitudinals:
+            continue
+        ax.plot([x1, x2], [z1, z2], [0, 0], gid=gid, **long_kw)
 
     # ================================================================
     # 3. DRAW TRANSVERSE LINES (grey, cross-beams)
@@ -246,7 +352,7 @@ def _add_grillage_background(
         is_end_line = (abs(x1 - min_x) < TOL or abs(x1 - max_x) < TOL)
 
         if show_transverse or (include_end_transverse and is_end_line):
-            ax.plot([x1, x2], [z1, z2], [0, 0], **trans_kw)
+            ax.plot([x1, x2], [z1, z2], [0, 0], gid=gid, **trans_kw)
 
     # ================================================================
     # 4. INNER NODE DOTS
@@ -262,7 +368,7 @@ def _add_grillage_background(
         if inner_xs:
             ax.scatter(inner_xs, inner_zs, inner_ys,
                        color="#388E3C", alpha=0.4, s=5,
-                       zorder=2, depthshade=False)
+                       zorder=2, depthshade=False, gid=gid)
 
 class Arrow3D(Annotation):
     def __init__(self, start, end, *args, **kwargs):
@@ -281,15 +387,21 @@ class Arrow3D(Annotation):
         self.set_position((x1p, y1p))
         super().draw(renderer)
 
-def _draw_camera_arrow(ax, start, end, color, lw=2.2, gid=None):
-    """Draw a clean camera-facing arrow that dynamically updates in 3D."""
+def _draw_camera_arrow(ax, start, end, color, lw=2.2, gid=None,
+                       mutation_scale=15, alpha=1.0):
+    """Draw a clean camera-facing arrow that dynamically updates in 3D.
+
+    mutation_scale sets the arrowhead size in screen points (constant regardless
+    of data range); alpha lets callers draw a subtler, semi-transparent arrow.
+    """
     arrow = Arrow3D(
         start, end,
         arrowprops=dict(
             arrowstyle="-|>",
             color=color,
             lw=lw,
-            mutation_scale=15,
+            mutation_scale=mutation_scale,
+            alpha=alpha,
             shrinkA=0,
             shrinkB=0
         ),
@@ -511,7 +623,7 @@ def _add_element_number_labels(ax, nodes, members, visible: bool = False):
 # GRILLAGE PLOT
 # =============================================================================
 
-def build_figure_grillage(nodes, members, edge_dist=0.0, selected_girder="All"):
+def build_figure_grillage(nodes, members, edge_dist=0.0, selected_girder="All", nodal_fy=None, load_mode="off", axis="Y"):
     """
     Build a 3-D matplotlib figure showing only the bridge grillage mesh.
 
@@ -519,6 +631,9 @@ def build_figure_grillage(nodes, members, edge_dist=0.0, selected_girder="All"):
     ----------
     nodes   : dict  — {tag: [x, y, z]}
     members : dict  — {tag: [n1, n2]}
+    nodal_fy: dict  — flat {node_id: value} loads for the active axis
+    load_mode : str — "off" / "all" — whether load arrows are drawn
+    axis    : str  — "X", "Y" or "Z" direction the load arrows follow
 
     Returns
     -------
@@ -578,9 +693,10 @@ def build_figure_grillage(nodes, members, edge_dist=0.0, selected_girder="All"):
     xs = [bg_nodes[n][0] for n in node_ids]
     ys = [bg_nodes[n][2] for n in node_ids] # The physical Z-coordinate is plotted on the Y-axis here
     
-    # Capture the scatter object
+    # Capture the scatter object. Darker green (#1B5E20) so the grillage nodes
+    # read solid instead of the washed-out lighter green.
     sc = ax.scatter(xs, ys, [0] * len(xs),
-                    color="#388E3C", s=14, zorder=4, depthshade=False)
+                    color="#1B5E20", s=14, zorder=4, depthshade=False)
 
     # Attach the hover cursor specifically for the Grillage view
     # Attach the hover cursor directly to the single Grillage scatter object 'sc'
@@ -643,6 +759,12 @@ def build_figure_grillage(nodes, members, edge_dist=0.0, selected_girder="All"):
     # Dedicate 18% of the right side purely to the massive axis labels.
     # This naturally shoves the 3D bridge perfectly into the center of the screen!
     # fig.subplots_adjust(left=0.05, right=0.88, bottom=0.05, top=0.90)
+    
+    if nodal_fy and load_mode != "off":
+        all_xs = [coord[0] for coord in nodes.values()]
+        x_range = max(all_xs) - min(all_xs) or 1.0
+        _add_nodal_load_arrows(ax, nodes, nodal_fy, x_range, load_mode)
+        
     return fig
 
 
@@ -650,7 +772,7 @@ def build_figure_grillage(nodes, members, edge_dist=0.0, selected_girder="All"):
 # SFD PLOT
 # =============================================================================
 
-def build_figure_sfd(ds, force_key, nodes, members, edge_dist=0.0, eng_scale=1.0, selected_girder="All"):
+def build_figure_sfd(ds, force_key, nodes, members, edge_dist=0.0, eng_scale=1.0, selected_girder="All", nodal_fy=None, load_mode="off", axis="Y"):
     """
     Build a 3-D matplotlib figure showing the Shear Force Diagram.
     """
@@ -692,7 +814,21 @@ def build_figure_sfd(ds, force_key, nodes, members, edge_dist=0.0, eng_scale=1.0
         include_end_transverse=False,
         show_inner_nodes=False,
     )
-    
+
+    # Full grillage overlay (side/edge longitudinals + transverse cross lines),
+    # tagged gid="grillage" and hidden until the toolbar Grillage button turns it
+    # on (MplPlotWidget._apply_grillage_visibility). include_inner_longitudinals
+    # is False because the inner girder centre-lines are already drawn above.
+    _add_grillage_background(
+        ax, bg_nodes, bg_members,
+        show_transverse=True,
+        include_edge_longitudinals=True,
+        include_end_transverse=True,
+        show_inner_nodes=False,
+        include_inner_longitudinals=False,
+        gid="grillage",
+    )
+
     shear_color = "#1565C0"
     fill_color  = "#90CAF9"
     base_color  = "#388E3C"
@@ -731,7 +867,7 @@ def build_figure_sfd(ds, force_key, nodes, members, edge_dist=0.0, eng_scale=1.0
             continue
 
         ax.scatter(xs, z_arr, np.zeros_like(xs),
-                   color=base_color, s=5, zorder=4, depthshade=False, alpha=0.4)
+                   color=base_color, s=16, zorder=4, depthshade=False, alpha=0.55)
 
         dynamic_zorder = 100 - i  
         ax.text(xs[0] - (x_range * 0.02), z_base, 0, f"{girder_name}",
@@ -891,13 +1027,17 @@ def build_figure_sfd(ds, force_key, nodes, members, edge_dist=0.0, eng_scale=1.0
     _add_coordinate_triad(ax, nodes, eng_scale=v_scale)
     ax.set_axis_off()
 
+    if nodal_fy and load_mode != "off":
+        _add_nodal_load_arrows(ax, nodes, nodal_fy, x_range, load_mode,
+                               eng_scale=v_scale)
+
     return fig, summary_data
 
 # =============================================================================
 # BMD PLOT
 # =============================================================================
 
-def build_figure_bmd(ds, force_key, nodes, members, edge_dist=0.0, eng_scale=1.0, selected_girder="All"):
+def build_figure_bmd(ds, force_key, nodes, members, edge_dist=0.0, eng_scale=1.0, selected_girder="All", nodal_fy=None, load_mode="off", axis="Y"):
     """
     Build a 3-D matplotlib figure showing the Bending Moment Diagram.
 
@@ -946,6 +1086,17 @@ def build_figure_bmd(ds, force_key, nodes, members, edge_dist=0.0, eng_scale=1.0
         show_inner_nodes=False,
     )
 
+    # Full grillage overlay — hidden until the toolbar Grillage button turns it on.
+    _add_grillage_background(
+        ax, bg_nodes, bg_members,
+        show_transverse=True,
+        include_edge_longitudinals=True,
+        include_end_transverse=True,
+        show_inner_nodes=False,
+        include_inner_longitudinals=False,
+        gid="grillage",
+    )
+
     moment_color = "#C62828"
     fill_color   = "#EF9A9A"
     base_color   = "#388E3C"
@@ -981,7 +1132,7 @@ def build_figure_bmd(ds, force_key, nodes, members, edge_dist=0.0, eng_scale=1.0
             continue
 
         ax.scatter(xs, z_arr, np.zeros_like(xs),
-                   color=base_color, s=5, zorder=4, depthshade=False, alpha=0.4)
+                   color=base_color, s=16, zorder=4, depthshade=False, alpha=0.55)
 
         # girder label
         # 1. Reverse the stack: G1 (i=0) gets zorder 100, G2 gets 99, etc.
@@ -1036,9 +1187,7 @@ def build_figure_bmd(ds, force_key, nodes, members, edge_dist=0.0, eng_scale=1.0
         # Slicing [1:-1] strips away the first and last dots so the supports stay clean!
         sc = ax.scatter(xs[1:-1], z_arr[1:-1], y_plot[1:-1],
                         color=moment_color, s=30, zorder=5, depthshade=False)
-        
         _scatter_objs.append(sc)
-        
         # CRITICAL: You must slice the hover data too, or the tooltip will show the wrong node!
         _scatter_data[id(sc)] = (node_ids[1:-1], xs[1:-1], Mz[1:-1])
 
@@ -1128,6 +1277,11 @@ def build_figure_bmd(ds, force_key, nodes, members, edge_dist=0.0, eng_scale=1.0
     # This naturally shoves the 3D bridge perfectly into the center of the screen!
     _add_coordinate_triad(ax, nodes, eng_scale=v_scale)
     ax.set_axis_off()
+    
+    if nodal_fy and load_mode != "off":
+        _add_nodal_load_arrows(ax, nodes, nodal_fy, x_range, load_mode,
+                               eng_scale=v_scale)
+        
     return fig, summary_data
 
 
@@ -1287,7 +1441,7 @@ def build_figure_bmd(ds, force_key, nodes, members, edge_dist=0.0, eng_scale=1.0
 # DEFLECTION PLOT
 # =============================================================================
 
-def build_figure_deflection(ds, disp_key, nodes, members, edge_dist=0.0, eng_scale=1.0, selected_girder="All"):
+def build_figure_deflection(ds, disp_key, nodes, members, edge_dist=0.0, eng_scale=1.0, selected_girder="All", nodal_fy=None, load_mode="off", axis="Y"):
     """
     Build a 3-D matplotlib figure showing the Deflection Diagram.
     """
@@ -1318,6 +1472,17 @@ def build_figure_deflection(ds, disp_key, nodes, members, edge_dist=0.0, eng_sca
         include_edge_longitudinals=False,
         include_end_transverse=False,
         show_inner_nodes=False,
+    )
+
+    # Full grillage overlay — hidden until the toolbar Grillage button turns it on.
+    _add_grillage_background(
+        ax, bg_nodes, bg_members,
+        show_transverse=True,
+        include_edge_longitudinals=True,
+        include_end_transverse=True,
+        show_inner_nodes=False,
+        include_inner_longitudinals=False,
+        gid="grillage",
     )
 
     defl_color = "#6A1B9A"   # deep purple
@@ -1374,7 +1539,6 @@ def build_figure_deflection(ds, disp_key, nodes, members, edge_dist=0.0, eng_sca
     # Track global scaled z-range for baseline at 0 and cube resizing.
     global_vmin = 0.0
     global_vmax = 0.0
-
     for i, (z_val, elems) in enumerate(girder_items):
         is_edge_beam = edge_dist > 0 and (i == 0 or i == n_girders - 1)
         girder_name  = f"G{i}" if edge_dist > 0 else f"G{i + 1}"
@@ -1418,7 +1582,6 @@ def build_figure_deflection(ds, disp_key, nodes, members, edge_dist=0.0, eng_sca
 
         # Draw Nodes (Pure Black)
         sc = ax.scatter(xs[1:-1], z_arr[1:-1], y_plot[1:-1], color="black", s=30, zorder=5, depthshade=False)
-        
         _scatter_objs.append(sc)
         _scatter_data[id(sc)] = (node_list[1:-1], xs[1:-1], vals[1:-1])
         if not is_edge_beam and len(vals) > 0:
@@ -1549,6 +1712,11 @@ def build_figure_deflection(ds, disp_key, nodes, members, edge_dist=0.0, eng_sca
     ax.grid(True, linestyle="--", linewidth=0.4, alpha=0.5)
     _add_coordinate_triad(ax, nodes, eng_scale=v_scale)
     ax.set_axis_off()
+    
+    if nodal_fy and load_mode != "off":
+        _add_nodal_load_arrows(ax, nodes, nodal_fy, x_range, load_mode,
+                               eng_scale=v_scale)
+        
     return fig, summary_data
 
 

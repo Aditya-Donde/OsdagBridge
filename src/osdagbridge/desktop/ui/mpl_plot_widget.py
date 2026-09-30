@@ -176,8 +176,13 @@ class MplPlotWidget(QWidget):
         self._summary_data = {}
 
         # Display States
+        # _grillage_mode  : exclusive standalone grillage figure — toggled by the
+        #                   toolbar 'Grillage' button (plots hidden while active).
+        # _show_grillage  : grillage grid overlay drawn on every force plot.
+        #                   Kept True so the plots inherently show the grid.
         self._grillage_mode = False
-        self._show_nodes = False 
+        self._show_grillage = True
+        self._show_nodes = False
         self._show_axis = False 
         self._show_supports = False 
         self._show_grid = False  
@@ -186,8 +191,9 @@ class MplPlotWidget(QWidget):
         self._show_element_numbers = False
         self._is_summary_checked = False
         self._show_max = False  
-        self._show_min = False  
         self._show_all_vals = False 
+        self._load_mode = "off"
+        self._result_data = None
 
         # Zoom state
         self._zoom_scale  = 1.0
@@ -260,7 +266,6 @@ class MplPlotWidget(QWidget):
         self._canvas.mpl_connect("button_press_event",   lambda e: self._navcube_sync.set_interaction_active(True)  if e.button == 1 and not self._pan_active and not self._rotate_active else None)
         self._canvas.mpl_connect("button_release_event", lambda e: self._navcube_sync.set_interaction_active(False) if e.button == 1 and not self._pan_active and not self._rotate_active else None)
         self._canvas.mpl_connect("motion_notify_event",  lambda e: self._navcube_sync.force_sync() if e.button == 1 and not self._pan_active and not self._rotate_active else None)
-        # ──────────────────────────────────────────────────────────
 
         # zoom toolbar
         self._btn_zoom_reset = QPushButton("⟳")
@@ -407,12 +412,13 @@ class MplPlotWidget(QWidget):
                     pass
 
     def setup(self, ds_all, loadcases: list, nodes: dict, members: dict,
-              edge_dist: float = 0.0):
+              edge_dist: float = 0.0, result_data: dict = None):
         self._ds_all    = ds_all
         self._loadcases = list(loadcases)
         self._nodes     = nodes
         self._members   = members
         self._edge_dist = edge_dist
+        self._result_data = result_data
 
         if hasattr(self, '_fig') and self._fig.axes:
             ax = self._fig.axes[0]
@@ -449,9 +455,9 @@ class MplPlotWidget(QWidget):
         # Connect Analysis Member Dropdown
         combo_member = output_dock.output_widget.findChild(QComboBox, "analysis.member")
         if combo_member is not None:
+            # update_plot() now rebuilds whichever view is active (force plot or the
+            # exclusive grillage figure), so a single connection covers both.
             combo_member.currentTextChanged.connect(self.update_plot)
-            # Make sure it fires an update if changed from UI, since grillage might be active
-            combo_member.currentTextChanged.connect(lambda text: self._on_grillage_toggled(self._grillage_mode) if self._grillage_mode else None)
 
         # 2. Connect Force Radios
         from osdagbridge.desktop.ui.utils.custom_widgets import CustomRadioButton
@@ -496,6 +502,7 @@ class MplPlotWidget(QWidget):
         if abs(scale - self._eng_scale) < 1e-9:
             return
         self._eng_scale = scale
+        # No value axis in the exclusive grillage view — nothing to rescale.
         if self._grillage_mode:
             return
         self.update_plot()
@@ -509,10 +516,12 @@ class MplPlotWidget(QWidget):
         return "All"
 
     def update_plot(self, *_args):
-        if self._grillage_mode:
+        if self._ds_all is None or self._output_dock is None:
             return
 
-        if self._ds_all is None or self._output_dock is None:
+        # Exclusive grillage view — render the standalone figure instead of a force diagram.
+        if self._grillage_mode:
+            self._render_grillage_view()
             return
 
         loadcase  = self._current_loadcase()
@@ -520,8 +529,7 @@ class MplPlotWidget(QWidget):
         sel_girder= self._current_member()
 
         if not loadcase or not force_key:
-            return
-
+            return   
         ds = self._ds_all.sel(Loadcase=loadcase)
         
         old_elev, old_azim = None, None
@@ -535,6 +543,9 @@ class MplPlotWidget(QWidget):
         plt.close(self._fig)
         
         self._summary_data = {} 
+        
+       # Get all available nodal loads for the active load case.
+        nodal_fy = self._current_nodal_loads()
 
         # (Your existing if/elif/else block to build the new figures)
         eng_scale = self._eng_scale
@@ -542,19 +553,22 @@ class MplPlotWidget(QWidget):
             self._fig, self._summary_data = build_figure_sfd(
                 ds, force_key, self._nodes, self._members,
                 edge_dist=self._edge_dist, eng_scale=eng_scale,
-                selected_girder=sel_girder
+                selected_girder=sel_girder,
+                nodal_fy=nodal_fy, load_mode=self._load_mode
             )
         elif force_key in _DEFL_KEYS:
             self._fig, self._summary_data = build_figure_deflection(
                 ds, force_key, self._nodes, self._members,
                 edge_dist=self._edge_dist, eng_scale=eng_scale,
-                selected_girder=sel_girder
+                selected_girder=sel_girder,
+                nodal_fy=nodal_fy, load_mode=self._load_mode
             )
         else:
             self._fig, self._summary_data = build_figure_bmd(
                 ds, force_key, self._nodes, self._members,
                 edge_dist=self._edge_dist, eng_scale=eng_scale,
-                selected_girder=sel_girder
+                selected_girder=sel_girder,
+                nodal_fy=nodal_fy, load_mode=self._load_mode
             )
 
         self._attach_figure(self._fig)
@@ -567,6 +581,7 @@ class MplPlotWidget(QWidget):
         self._apply_grid_visibility()
         self._apply_girder_labels_visibility()
         self._apply_element_number_visibility()
+        self._apply_grillage_visibility()
         self._apply_annotation_visibility()
         
         # (Your existing HUD logic)
@@ -640,6 +655,7 @@ class MplPlotWidget(QWidget):
             self._navcube.show()
             self._navcube.raise_()
             self._navcube_sync.force_sync()
+            
         else:
             self._navcube.hide()
 
@@ -706,44 +722,91 @@ class MplPlotWidget(QWidget):
         self._canvas.draw_idle()
 
     # Toolbar Slots
+    def _nodal_loads_allowed_for_case(self, loadcase: str) -> bool:
+        """Return True only for individual load cases.
+
+        Load combinations are identified by the '+' operator in their
+        expression and are excluded from nodal-load arrow display.
+        This is UI-only filtering and does not modify structural calculations.
+        """
+
+        loadcase = str(loadcase or "").strip()
+
+        # Do not display nodal-load arrows for load combinations.
+        if "+" in loadcase:
+            return False
+
+        return True
+        
+    def _current_nodal_loads(self) -> dict:
+        """Return all available nodal load directions for the active load case."""
+        from osdagbridge.core.bridge_types.plate_girder.plot_generator import get_all_nodal_loads
+        if self._load_mode == "off" or not self._result_data or not self._loadcases:
+            return None
+        active_lc = self._current_loadcase() or self._loadcases[0]
+        if not self._nodal_loads_allowed_for_case(active_lc):
+            return None
+        return get_all_nodal_loads(self._result_data, active_lc)
+    
     def _on_grillage_toggled(self, checked: bool):
+        """Toolbar 'Grillage' toggle — exclusive standalone grillage view.
+
+        When checked, renders the standalone grillage figure (plots are hidden and
+        only loads + other toolbar controls remain). When unchecked, returns to the
+        ordinary force-diagram plots.
+        """
         self._grillage_mode = checked
         if checked:
-            if not self._nodes: return
-            old_elev, old_azim = None, None
-            if self._fig and self._fig.axes and hasattr(self._fig.axes[0], 'elev'):
-                old_elev = self._fig.axes[0].elev
-                old_azim = self._fig.axes[0].azim
-            plt.close(self._fig)
-            sel_girder = self._current_member()
-            self._fig = build_figure_grillage(self._nodes, self._members, edge_dist=self._edge_dist, selected_girder=sel_girder)
-            self._attach_figure(self._fig)
-            if self._fig.axes and old_elev is not None and old_azim is not None:
-                self._fig.axes[0].view_init(elev=old_elev, azim=old_azim)
-            if self._fig.axes:
-                title = self._fig.axes[0].get_title()
-                self._fig.axes[0].set_title("")
-                self._title_overlay.update_text(title)
-                self._position_title_overlay()
-            
-            self._apply_node_visibility()
-            self._apply_axis_visibility()
-            self._apply_supports_visibility()
-            self._apply_grid_visibility()
-            self._apply_girder_labels_visibility()
-            self._apply_element_number_visibility()
-            self._summary_overlay.hide()
-            
-            if self._fig.axes and hasattr(self._fig.axes[0], 'set_box_aspect'):
-                self._fig.axes[0].set_box_aspect(
-                    aspect=(2.5, 1.2, 1.0),
-                    zoom=self._zoom_scale,
-                )
-            self._canvas.draw()
-            self._store_orig_limits()
-            QTimer.singleShot(100, self._update_navcube_visibility)
+            self._render_grillage_view()
         else:
             self.update_plot()
+
+    def _render_grillage_view(self):
+        """Build the standalone grillage figure (exclusive toolbar 'Grillage' view)."""
+        if not self._nodes:
+            return
+        old_elev, old_azim = None, None
+        if self._fig and self._fig.axes and hasattr(self._fig.axes[0], 'elev'):
+            old_elev = self._fig.axes[0].elev
+            old_azim = self._fig.axes[0].azim
+        plt.close(self._fig)
+        sel_girder = self._current_member()
+
+        nodal_fy = self._current_nodal_loads()
+
+        self._fig = build_figure_grillage(
+            self._nodes, self._members, edge_dist=self._edge_dist, selected_girder=sel_girder,
+            nodal_fy=nodal_fy, load_mode=self._load_mode
+        )
+        self._attach_figure(self._fig)
+        if self._fig.axes and old_elev is not None and old_azim is not None:
+            self._fig.axes[0].view_init(elev=old_elev, azim=old_azim)
+        if self._fig.axes:
+            title = self._fig.axes[0].get_title()
+            self._fig.axes[0].set_title("")
+            # Like the plots, the grillage view shows the active load case.
+            self._title_overlay.update_text(
+                title,
+                f"Load Case/Combination : {self._current_loadcase()}",
+            )
+            self._position_title_overlay()
+
+        self._apply_node_visibility()
+        self._apply_axis_visibility()
+        self._apply_supports_visibility()
+        self._apply_grid_visibility()
+        self._apply_girder_labels_visibility()
+        self._apply_element_number_visibility()
+        self._summary_overlay.hide()
+
+        if self._fig.axes and hasattr(self._fig.axes[0], 'set_box_aspect'):
+            self._fig.axes[0].set_box_aspect(
+                aspect=(2.5, 1.2, 1.0),
+                zoom=self._zoom_scale,
+            )
+        self._canvas.draw()
+        self._store_orig_limits()
+        QTimer.singleShot(100, self._update_navcube_visibility)
 
     def _on_nodes_toggled(self, checked: bool):
         self._show_nodes = checked
@@ -805,6 +868,19 @@ class MplPlotWidget(QWidget):
             for text in ax.texts:
                 if text.get_gid() == "node_number":
                     text.set_visible(self._show_node_numbers)
+
+    def _apply_grillage_visibility(self):
+        """Show/hide the grillage overlay — the gid='grillage' side (edge
+        longitudinal) and cross (transverse) lines drawn on every force figure by
+        plot_generator._add_grillage_background(..., gid='grillage'). Kept on by
+        default (_show_grillage=True) so the grillage grid is inherent on plots."""
+        for ax in self._fig.axes:
+            for line in ax.lines:
+                if line.get_gid() == "grillage":
+                    line.set_visible(self._show_grillage)
+            for collection in ax.collections:
+                if collection.get_gid() == "grillage":
+                    collection.set_visible(self._show_grillage)
 
     def _apply_supports_visibility(self):
         for ax in self._fig.axes:
@@ -1068,7 +1144,14 @@ class MplPlotWidget(QWidget):
             if cur_aspect is None:
                 cur_aspect = (2.5, 1.2, 1.0)
             ax.set_box_aspect(aspect=cur_aspect, zoom=fit_zoom)
-            ax.autoscale()
+            # NOTE: do NOT call ax.autoscale() here.
+            # Arrow3D artists (used for load arrows) are 2D Annotation subclasses;
+            # they do not expose proper 3D data extents to matplotlib's autoscale
+            # machinery.  Calling autoscale() causes the 3D axis limits to blow up
+            # (especially zlim), which in turn corrupts the proportional headroom
+            # calculation in _add_nodal_load_arrows, making arrows appear
+            # enormous after a Zoom Fit.  The limits are already set correctly
+            # when the figure is built, so there is nothing to recalculate here.
         else:  # 2D
             ax.relim()
             ax.autoscale_view()
