@@ -74,10 +74,14 @@ QMenuBar#template_page_menu_bar QMenu::item {
     color: #000000;
     font-size: 11px;
 }
+QMenuBar#template_page_menu_bar QMenu::item:disabled {
+    color: #838383;
+}
 QMenuBar#template_page_menu_bar QMenu::item:selected {
     background-color: #E6F0FF;
     border-radius: 3px;
 }
+
 QMenuBar#template_page_menu_bar QMenu::separator {
     height: 1px;
     background: #F0F0F0;
@@ -111,6 +115,7 @@ QMenu::item:selected {
     color: #fff;
     border-radius: 2px;
 }
+
 
 /* ==============================================
    3. GENERAL BUTTON STYLES (Base Level)
