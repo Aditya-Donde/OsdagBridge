@@ -333,8 +333,11 @@ class CustomWindow(QWidget):
         # Add Tool bar
         self.tool_bar = ToolBarWidget()
         central_V_layout.addWidget(self.tool_bar)
+        # Reuse toolbar handlers so menu and toolbar behavior stay synchronized.
         self.zoom_in_action.triggered.connect(self.tool_bar.btn_zoom_in.click)
         self.zoom_out_action.triggered.connect(self.tool_bar.btn_zoom_out.click)
+        self.pan_action.triggered.connect(self.tool_bar.btn_pan.click)
+        self.rotate_3d_action.triggered.connect(self.tool_bar.btn_rotate.click)
 
         # Wire context-sensitive toolbar behaviour (no existing code changed)
         from osdagbridge.desktop.ui.utils.toolbar_controller import ToolBarController
@@ -1087,6 +1090,17 @@ class CustomWindow(QWidget):
             self.logs_dock.hide()
             self.log_dock_control.load(":/vectors/view_btn/logs_dock_inactive.svg")
 
+    def _set_graphics_actions_enabled(self, enabled: bool) -> None:
+        self.zoom_in_action.setEnabled(enabled)
+        self.zoom_out_action.setEnabled(enabled)
+        self.pan_action.setEnabled(enabled)
+        self.rotate_3d_action.setEnabled(enabled)
+        self.front_view_action.setEnabled(enabled)
+        self.top_view_action.setEnabled(enabled)
+        self.side_view_menu.setEnabled(enabled)
+        self.left_side_action.setEnabled(enabled)
+        self.right_side_action.setEnabled(enabled)
+
     # Helper function to show and hide the 3D CAD | Plots | 2D CAD widgets
     def _set_central_view(self, view: str):
         # First, explicitly turn off any active navigation modes in both views
@@ -1125,9 +1139,8 @@ class CustomWindow(QWidget):
         if view == 'dual':
             self.cad_log_splitter.setSizes([view_h, 0, 0, log_h])
 
-            # Disable Graphics Zoom when 3D CAD is not visible
-            self.zoom_in_action.setEnabled(False)
-            self.zoom_out_action.setEnabled(False)
+            # Disable Graphics actions when 3D CAD is not visible
+            self._set_graphics_actions_enabled(False)
 
             # Reset toolbar when returning to dual view
             self.toolbar_ctrl.reset()
@@ -1138,18 +1151,18 @@ class CustomWindow(QWidget):
             # Bind toolbar to 3D CAD view
             self.toolbar_ctrl.bind_to_cad_3d(self.cad_3d_widget)
 
-            # Enable Graphics Zoom when 3D CAD is visible
-            self.zoom_in_action.setEnabled(True)
-            self.zoom_out_action.setEnabled(True)
+            # Enable Graphics actions only after Design is successfully completed
+            design_completed = self.backend.design_completed
+
+            self._set_graphics_actions_enabled(design_completed)
 
         else:  # plots
             self.cad_log_splitter.setSizes([0, 0, view_h, log_h])
             # Bind toolbar to Plots view
             self.toolbar_ctrl.bind_to_plots(self.plots_widget)
 
-            # Disable Graphics Zoom when Plots is visible
-            self.zoom_in_action.setEnabled(False)
-            self.zoom_out_action.setEnabled(False)
+            # Disable Graphics actions when Plots is visible
+            self._set_graphics_actions_enabled(False)
         
         # Update tool bar visibility based on view rules
         self._update_tool_bar_visibility()
@@ -1822,39 +1835,57 @@ class CustomWindow(QWidget):
         quit_action.setShortcut(QKeySequence("Shift+Q"))
         file_menu.addAction(quit_action)
 
+        # Graphics Menu
+
         graphics_menu = self.menu_bar.addMenu("Graphics")
 
         self.zoom_in_action = QAction("Zoom In", self)
         self.zoom_in_action.setShortcut(QKeySequence("Ctrl+I"))
-        self.zoom_in_action.setEnabled(False)
         graphics_menu.addAction(self.zoom_in_action)
 
         self.zoom_out_action = QAction("Zoom Out", self)
         self.zoom_out_action.setShortcut(QKeySequence("Ctrl+O"))
-        self.zoom_out_action.setEnabled(False)
         graphics_menu.addAction(self.zoom_out_action)
 
-        pan_action = QAction("Pan", self)
-        pan_action.setShortcut(QKeySequence("Ctrl+P"))
-        graphics_menu.addAction(pan_action)
+        self.pan_action = QAction("Pan", self)
+        self.pan_action.setShortcut(QKeySequence("Ctrl+P"))
+        graphics_menu.addAction(self.pan_action)
 
-        rotate_3d_action = QAction("Rotate 3D Model", self)
-        rotate_3d_action.setShortcut(QKeySequence("Ctrl+R"))
-        graphics_menu.addAction(rotate_3d_action)
+        self.rotate_3d_action = QAction("Rotate 3D Model", self)
+        self.rotate_3d_action.setShortcut(QKeySequence("Ctrl+R"))
+        graphics_menu.addAction(self.rotate_3d_action)
 
         graphics_menu.addSeparator()
 
-        front_view_action = QAction("Show Front View", self)
-        front_view_action.setShortcut(QKeySequence("Alt+Shift+F"))
-        graphics_menu.addAction(front_view_action)
-        
-        top_view_action = QAction("Show Top View", self)
-        top_view_action.setShortcut(QKeySequence("Alt+Shift+T"))
-        graphics_menu.addAction(top_view_action)
-        
-        side_view_action = QAction("Show Side View", self)
-        side_view_action.setShortcut(QKeySequence("Alt+Shift+S"))
-        graphics_menu.addAction(side_view_action)
+        self.front_view_action = QAction("Show Front View", self)
+        self.front_view_action.triggered.connect(
+            lambda: self._set_cad_standard_view("front")
+        )
+        self.front_view_action.setShortcut(QKeySequence("Alt+Shift+F"))
+        graphics_menu.addAction(self.front_view_action)
+
+        self.top_view_action = QAction("Show Top View", self)
+        self.top_view_action.triggered.connect(
+            lambda: self._set_cad_standard_view("top")
+        )
+        self.top_view_action.setShortcut(QKeySequence("Alt+Shift+T"))
+        graphics_menu.addAction(self.top_view_action)
+
+        self.side_view_menu = graphics_menu.addMenu("Show Side View")
+
+        self.left_side_action = QAction("Left Side", self)
+        self.left_side_action.triggered.connect(
+            lambda: self._set_cad_standard_view("left")
+        )
+        self.side_view_menu.addAction(self.left_side_action)
+
+        self.right_side_action = QAction("Right Side", self)
+        self.right_side_action.triggered.connect(
+            lambda: self._set_cad_standard_view("right")
+        )
+        self.side_view_menu.addAction(self.right_side_action)
+
+        self._set_graphics_actions_enabled(False)
 
         # Database Menu
         database_menu = self.menu_bar.addMenu("Database")
@@ -1910,6 +1941,55 @@ class CustomWindow(QWidget):
         check_update_action = QAction("Check For Update", self)
         help_menu.addAction(check_update_action)
 
+    def _set_cad_standard_view(self, view: str) -> None:
+        """Set the OCC 3D CAD camera to a standard orthographic view."""
+        try:
+            cad_widget = self.cad_3d_widget
+            display = cad_widget.display
+
+            if display is None:
+                return
+
+            view_obj = display.View
+
+            try:
+                at = view_obj.At()
+                cx = at.X()
+                cy = at.Y()
+                cz = at.Z()
+            except Exception:
+                cx = 0.0
+                cy = 0.0
+                cz = 0.0
+
+            distance = 1000.0
+
+            if view == "front":
+                view_obj.SetEye(cx, cy - distance, cz)
+                view_obj.SetAt(cx, cy, cz)
+                view_obj.SetUp(0.0, 0.0, 1.0)
+
+            elif view == "top":
+                view_obj.SetEye(cx, cy, cz + distance)
+                view_obj.SetAt(cx, cy, cz)
+                view_obj.SetUp(0.0, 1.0, 0.0)
+
+            elif view == "left":
+                view_obj.SetEye(cx - distance, cy, cz)
+                view_obj.SetAt(cx, cy, cz)
+                view_obj.SetUp(0.0, 0.0, 1.0)
+
+            elif view == "right":
+                view_obj.SetEye(cx + distance, cy, cz)
+                view_obj.SetAt(cx, cy, cz)
+                view_obj.SetUp(0.0, 0.0, 1.0)
+
+            view_obj.Redraw()
+
+        except Exception as e:
+            print(f"[Graphics] Failed to set {view} view: {e}")
+
+
     def trigger_ifc_export(self):
         from PySide6.QtWidgets import QFileDialog, QMessageBox
         from osdagbridge.core.ifc_export_bridge.export_ifc_handler import PlateGirderIfcExportHandler
@@ -1937,8 +2017,9 @@ class CustomWindow(QWidget):
             self.export_finished.emit(success, msg)
 
         handler = PlateGirderIfcExportHandler(cad, file_path, completion_callback)
+
         handler.export_async()
-   
+
 
 class InputDockIndicator(QWidget):
     def __init__(self, parent):
