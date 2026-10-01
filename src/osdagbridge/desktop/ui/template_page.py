@@ -1737,6 +1737,32 @@ class CustomWindow(QWidget):
             ).exec()
     #Cad-image-export-End
 
+    def save_log_messages(self):
+        """Write the log pane text to a file chosen by the user."""
+        filePath, _ = QFileDialog.getSaveFileName(
+            self,
+            "Save Log Messages",
+            os.path.join(str(get_documents_folder()), "log_messages.txt"),
+            "Text files (*.txt)",
+        )
+        if not filePath:
+            return
+
+        try:
+            with open(filePath, "w", encoding="utf-8") as log_file:
+                log_file.write(self.textEdit.toPlainText())
+            CustomMessageBox(
+                title="Success",
+                text="Log messages saved successfully.",
+                dialogType=MessageBoxType.Success,
+            ).exec()
+        except Exception as e:
+            CustomMessageBox(
+                title="Error",
+                text=f"Failed to save log messages:\n{e}",
+                dialogType=MessageBoxType.Critical,
+            ).exec()
+
     def create_menu_bar_items(self):
         # File Menus
         file_menu = self.menu_bar.addMenu("File")
@@ -1755,6 +1781,7 @@ class CustomWindow(QWidget):
 
         save_log_action = QAction("Save Log Messages", self)
         save_log_action.setShortcut(QKeySequence("Alt+M"))
+        save_log_action.triggered.connect(lambda: self.save_log_messages())
         file_menu.addAction(save_log_action)
 
         create_report_action = QAction("Create Design Report", self)
@@ -1778,6 +1805,7 @@ class CustomWindow(QWidget):
 
         quit_action = QAction("Quit", self)
         quit_action.setShortcut(QKeySequence("Shift+Q"))
+        quit_action.triggered.connect(lambda: self.close())
         file_menu.addAction(quit_action)
 
         graphics_menu = self.menu_bar.addMenu("Graphics")
