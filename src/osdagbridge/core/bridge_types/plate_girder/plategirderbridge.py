@@ -2977,7 +2977,11 @@ class PlateGirderBridge:
             # All values are read directly from output_dict with no fallbacks.
             # base_diameter      [KEY_DS_STUD_DIAMETER]             : shank diameter (mm)
             # top_diameter       [KEY_DS_STUD_HEAD_DIAMETER]        : min head diameter = 1.5 x d  [IRC 22:2015 Cl. 606.6]
-            # base_height        [KEY_DS_STUD_HEIGHT]               : stud shank height (mm)
+            # base_height        [KEY_DS_STUD_HEIGHT - HEAD_HEIGHT] : stud shank height (mm).  The UI
+            #                                                         height is the overall stud height
+            #                                                         (the validator bounds it by 4d and
+            #                                                         deck cover), so the head is carved
+            #                                                         out of it, not stacked on top.
             # top_height         [KEY_DS_STUD_HEAD_HEIGHT]          : min head height = 0.667 x d  [IS 3935:1966]
             # num_per_section    [KEY_DS_STUD_COUNT]                : studs per section
             # transverse_spacing [KEY_DS_STUD_TRANSVERSE_SPACING]   : transverse spacing (mm)
@@ -2994,7 +2998,7 @@ class PlateGirderBridge:
             shear_stud_params=ShearStudParamsDTO(
                 base_diameter      = float(inp[KEY_DS_STUD_DIAMETER]),
                 top_diameter       = float(inp[KEY_DS_STUD_HEAD_DIAMETER]),
-                base_height        = float(inp[KEY_DS_STUD_HEIGHT]),
+                base_height        = float(inp[KEY_DS_STUD_HEIGHT]) - float(inp[KEY_DS_STUD_HEAD_HEIGHT]),
                 top_height         = float(inp[KEY_DS_STUD_HEAD_HEIGHT]),
                 num_per_section    = int(float(inp[KEY_DS_STUD_COUNT])),
                 transverse_spacing = float(inp[KEY_DS_STUD_TRANSVERSE_SPACING]),
