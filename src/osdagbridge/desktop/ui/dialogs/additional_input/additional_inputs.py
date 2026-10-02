@@ -615,6 +615,13 @@ class AdditionalInputs(QDialog):
             widget.blockSignals(False)
             self._update_input_dict(key, str(corrected))
 
+        if key == KEY_CB_POST_SPACING and self._is_metallic_barrier(
+            self.working_input_dict.get(KEY_CB_TYPE, "")
+        ):
+            result = self.compute_crash_barrier_values(self.working_input_dict)
+            for result_key, value in result.items():
+                self._update_input_dict(result_key, str(value))
+
         self._update_additional_input_cad()
 
     def _on_field_editing(self, current_text: str, key: str):  # on_change: soft validation while typing — updates dict/CAD only when valid, no popups
@@ -991,7 +998,11 @@ class AdditionalInputs(QDialog):
             geom = IRC5_2015.cl_109_6_3_shapes(
                 KEY_CRASH_BARRIER_TYPE[1], VALUES_FOOTPATH[0], None, {}, crash_barrier_t
             )
-            load = metallic_edge_barrier_load(variant)["total_load_kN_per_m"]
+            spacing_m = input_dict.get(KEY_CB_POST_SPACING)
+            spacing_mm = float(spacing_m) * 1000 if spacing_m is not None else None
+            load = metallic_edge_barrier_load(
+                variant, post_spacing=spacing_mm
+            )["total_load_kN_per_m"]
             return {
                 KEY_CB_WIDTH:  f"{geom[KEY_CB_WIDTH]  / 1000:.3f}",
                 KEY_CB_HEIGHT: f"{geom[KEY_CB_HEIGHT] / 1000:.3f}",

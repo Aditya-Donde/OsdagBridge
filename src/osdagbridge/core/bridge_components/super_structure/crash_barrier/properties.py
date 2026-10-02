@@ -28,8 +28,8 @@ def load_from_area(area_mm2, density):
 
 # FIG 4 EDGE: METALLIC CRASH BARRIER
 
-def metallic_edge_barrier_load(barrier_type):
-    geom = metallic_edge_barrier_area(barrier_type)
+def metallic_edge_barrier_load(barrier_type, post_spacing=None):
+    geom = metallic_edge_barrier_area(barrier_type, post_spacing)
 
     steel_load = load_from_area(geom["steel_area"], STEEL_DENSITY)
     kerb_load = load_from_area(geom["kerb_area"], RCC_DENSITY)
