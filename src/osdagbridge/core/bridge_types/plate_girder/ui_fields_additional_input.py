@@ -117,6 +117,10 @@ _CRASH_BARRIER_TAB_SCHEMA = {
                     "id": KEY_CB_POST_SPACING,
                     "label": "Spacing between Posts (m):",
                     "type": TYPE_TEXTBOX,
+                    "on_change_compute": {
+                        "function": "compute_crash_barrier_values",
+                        "signal": "editingFinished",
+                    },
                 }
             ]
         },
@@ -199,6 +203,10 @@ _MEDIAN_TAB_SCHEMA = {
                     "id": KEY_MD_POST_SPACING,
                     "label": "Spacing between Posts (m):",
                     "type": TYPE_TEXTBOX,
+                    "on_change_compute": {
+                        "function": "compute_median_values",
+                        "signal": "editingFinished",
+                    },
                 }
             ]
         },

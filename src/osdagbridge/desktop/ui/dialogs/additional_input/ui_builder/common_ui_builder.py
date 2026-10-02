@@ -960,8 +960,12 @@ class UIBuilder(QWidget):
         on_change_compute = field_def.get("on_change_compute")
         if on_change_compute and ai:
             func_name = on_change_compute.get("function", "")
+            signal_name = on_change_compute.get("signal", "textChanged")
+
             if func_name and hasattr(ai, func_name):
-                def _trigger_compute(_val, _ai=ai, _fn=func_name, _root=self):
+                def _trigger_compute(
+                    *_args, _ai=ai, _fn=func_name, _root=self
+                ):
                     result = getattr(_ai, _fn)(_ai.working_input_dict)
                     if not isinstance(result, dict):
                         return
@@ -972,7 +976,10 @@ class UIBuilder(QWidget):
                 if ftype == TYPE_COMBOBOX:
                     field.currentTextChanged.connect(_trigger_compute)
                 elif ftype == TYPE_TEXTBOX:
-                    field.textChanged.connect(_trigger_compute)
+                    if signal_name == "editingFinished":
+                        field.editingFinished.connect(_trigger_compute)
+                    else:
+                        field.textChanged.connect(_trigger_compute)
 
                 # ── Register for batch call at design time ──
                 if func_name not in ai._compute_functions:
