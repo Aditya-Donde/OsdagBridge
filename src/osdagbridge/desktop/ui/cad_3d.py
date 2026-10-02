@@ -315,7 +315,7 @@ class CAD3DWindow(QWidget):
 
         # HELPER 
         def display_and_register(shapes, key, label, color, transparency=None, line_width=None,
-                                 selectable=True, per_ais_labels=None):
+                                 selectable=True, per_ais_labels=None, face_boundary=True):
             # per_ais_labels, when given, is one label per shape in the same order.
             # Those take precedence over `label`, which stays as the fallback — that is
             # how one registration key can still show different text per member.
@@ -338,6 +338,12 @@ class CAD3DWindow(QWidget):
                 if line_width is not None:
                     ais.SetWidth(line_width)
                     context.RecomputePrsOnly(ais, False)
+
+                # The viewer outlines every face; off for shapes that butt
+                # against each other, so no line is drawn along the joint.
+                if not face_boundary:
+                    ais.Attributes().SetFaceBoundaryDraw(False)
+                    context.Redisplay(ais, False)
 
                 if selectable:
                     context.Activate(ais, 0)   # REQUIRED for hover
@@ -441,14 +447,17 @@ class CAD3DWindow(QWidget):
             cad_data.get("deck_slab"),
             "Deck",
             labels["Deck"],
-            DECK_COLOR
+            DECK_COLOR,
+            # No boundary line along the deck/footpath joint when a footpath abuts it.
+            face_boundary=(params.footpath_config == "NONE")
         )
         # Same concrete as the deck; thickness from Typical Section.
         display_and_register(
             cad_data.get("footpaths", []),
             "Footpath",
             f"Footpath\nThickness: {params.footpath_thickness:.2f} mm\nWidth: {params.footpath_width:.2f} mm\nConcrete Grade: {params.concrete_grade}\nConfiguration: {params.footpath_config}",
-            DECK_COLOR
+            DECK_COLOR,
+            face_boundary=False
         )
         # DECK TEXTURES (DISPLAY ONLY, NO HOVER)
         self.viewer.deck_texture_ais = []
