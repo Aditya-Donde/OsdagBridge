@@ -991,7 +991,11 @@ class AdditionalInputs(QDialog):
             geom = IRC5_2015.cl_109_6_3_shapes(
                 KEY_CRASH_BARRIER_TYPE[1], VALUES_FOOTPATH[0], None, {}, crash_barrier_t
             )
-            load = metallic_edge_barrier_load(variant)["total_load_kN_per_m"]
+            spacing_m = input_dict.get(KEY_CB_POST_SPACING)
+            spacing_mm = float(spacing_m) * 1000 if spacing_m is not None else None
+            load = metallic_edge_barrier_load(
+                variant, post_spacing=spacing_mm
+            )["total_load_kN_per_m"]
             return {
                 KEY_CB_WIDTH:  f"{geom[KEY_CB_WIDTH]  / 1000:.3f}",
                 KEY_CB_HEIGHT: f"{geom[KEY_CB_HEIGHT] / 1000:.3f}",
@@ -1072,7 +1076,11 @@ class AdditionalInputs(QDialog):
             variant       = "Double" if "Double" in median_type else "Single"
             metallic_type = KEY_METALLIC_CRASH_BARRIER_TYPE[1 if variant == "Double" else 0]
             geom = IRC5_2015.cl_109_6_3_shapes(KEY_MEDIAN_TYPE[2], None, None, {}, metallic_type)
-            load = median_metallic_barrier_load(variant)["total_load_kN_per_m"]
+            spacing_m = input_dict.get(KEY_MD_POST_SPACING)
+            spacing_mm = float(spacing_m) * 1000 if spacing_m is not None else None
+            load = median_metallic_barrier_load(
+                variant, post_spacing=spacing_mm
+            )["total_load_kN_per_m"]
             return {
                 KEY_MD_WIDTH:  f"{geom['kerb_bottom_width'] / 1000:.3f}",
                 KEY_MD_HEIGHT: f"{(geom['post_height'] + geom['kerb_height']) / 1000:.3f}",
