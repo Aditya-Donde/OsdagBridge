@@ -31,7 +31,7 @@ def w_beam_area(thickness, dev_length, n):
 
 # FIG 4 : EDGE METALLIC BARRIER 
 
-def metallic_edge_barrier_area(barrier_type):
+def metallic_edge_barrier_area(barrier_type, post_spacing=None):
 
     metallic_type = (
         KEY_METALLIC_CRASH_BARRIER_TYPE[1]
@@ -57,7 +57,7 @@ def metallic_edge_barrier_area(barrier_type):
         geom['post_section_area'],
         geom['post_height'],
         geom['spacer_height'],
-        geom['post_spacing']
+        post_spacing if post_spacing is not None else geom['post_spacing']
     )
 
     beam_area = w_beam_area(
