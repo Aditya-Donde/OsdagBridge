@@ -133,7 +133,7 @@ def median_rcc_crash_barrier_area():
 
 # FIG 5 (C)
 
-def median_metallic_barrier_area(barrier_type):
+def median_metallic_barrier_area(barrier_type, post_spacing=None):
     """
     barrier_type:
         "Single"  → Single W-beam
@@ -163,7 +163,7 @@ def median_metallic_barrier_area(barrier_type):
         geom['post_section_area'],
         geom['post_height'],
         geom['spacer_height'],
-        geom['post_spacing']
+        post_spacing if post_spacing is not None else geom['post_spacing']
     )
 
     beam_area = w_beam_area(
