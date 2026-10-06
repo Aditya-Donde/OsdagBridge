@@ -1075,6 +1075,39 @@ class BridgeGrillageModel:
         except Exception:
             pass
         return 0.0
+    
+    def live_load_report_values(self) -> dict:
+        """Values used by Chapter 3 live-load report tables."""
+        span_m = float(self.L)
+        tracked_vehicle = IRC6_2017.cl_204_1_Class70R_vehicle_track()
+
+        return {
+            KEY_LL_IMPACT_FACTOR_CLASS_A: round(
+                1.0 + IRC6_2017.cl_208_2_impact_factor(span_m), 3
+            ),
+            KEY_LL_IMPACT_FACTOR_CLASS_AA_70R: round(
+                1.0 + IRC6_2017.cl_208_3_impact_factor(span_m), 3
+            ),
+            KEY_LL_VEHICLE_TOTAL_LOAD_CLASS_A: round(
+                sum(IRC6_2017.cl_204_1_ClassA_vehicle().get("wheel_loads", [])) / 1000.0, 2
+            ),
+            KEY_LL_VEHICLE_TOTAL_LOAD_70R_WHEELED: round(
+                sum(IRC6_2017.cl_204_1_Class70R_vehicle_wheel().get("wheel_loads", [])) / 1000.0, 2
+            ),
+            KEY_LL_VEHICLE_TOTAL_LOAD_70R_TRACKED: round(
+                tracked_vehicle.get("wheel_loads_udl", 0)
+                * (max(tracked_vehicle.get("x", [0])) - min(tracked_vehicle.get("x", [0])))
+                * len(tracked_vehicle.get("z", []))
+                / 1000.0,
+                2,
+            ),
+            KEY_LL_VEHICLE_TOTAL_LOAD_FATIGUE: round(
+                sum(IRC6_2017.cl_204_6_fatigue_load().get("wheel_loads", [])) / 1000.0, 2
+            ),
+            KEY_LL_VEHICLE_TOTAL_LOAD_CLASS_SV: IRC6_2017.cl_204_5_1_special_vehicle().get(
+                "total_load_kN", "N/A"
+            ),
+        }
 
     def _governing_case_num(self) -> int | None:
         """

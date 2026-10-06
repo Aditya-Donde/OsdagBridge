@@ -241,7 +241,6 @@ from osdagbridge.core.utils.common import (
     KEY_MP_STIFFENER_INTERMEDIATE_OUTSTAND,
     KEY_MP_STIFFENER_INTERMEDIATE_SPACING,
     KEY_MP_STIFFENER_LONGITUDINAL,
-
     )
 
 from osdagbridge.core.bridge_types.plate_girder.initial_sizing import (
@@ -667,6 +666,8 @@ class PlateGirderBridge:
         
         bridge_logger.sub_step("Creating governing LL load case...")
         self.create_governing_ll_load_case(dataset_initial, partial_safety_factor=1.0)
+
+        self.output_dict.update(self.grillage_model.live_load_report_values())
 
         bridge_logger.sub_step("Creating braking load case...")
         self.create_braking_load_case()
