@@ -1840,11 +1840,11 @@ class CustomWindow(QWidget):
         graphics_menu = self.menu_bar.addMenu("Graphics")
 
         self.zoom_in_action = QAction("Zoom In", self)
-        self.zoom_in_action.setShortcut(QKeySequence("Ctrl+I"))
+        self.zoom_in_action.setShortcut(QKeySequence("Ctrl++"))
         graphics_menu.addAction(self.zoom_in_action)
 
         self.zoom_out_action = QAction("Zoom Out", self)
-        self.zoom_out_action.setShortcut(QKeySequence("Ctrl+O"))
+        self.zoom_out_action.setShortcut(QKeySequence("Ctrl+-"))
         graphics_menu.addAction(self.zoom_out_action)
 
         self.pan_action = QAction("Pan", self)
