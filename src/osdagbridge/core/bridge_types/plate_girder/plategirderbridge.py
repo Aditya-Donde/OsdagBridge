@@ -199,7 +199,10 @@ from osdagbridge.core.utils.common import (
     KEY_SD_STIFF_METHOD,
     KEY_SD_STIFF_INT_THICK,
     KEY_SD_STIFF_INT_SPACING,
+    KEY_SD_STIFF_INT_THICK_REQ,
+    KEY_SD_STIFF_INT_SPACING_REQ,
     KEY_SD_STIFF_END_THICK,
+    KEY_SD_STIFF_END_THICK_REQ,
     KEY_SD_STIFF_END_COUNT,
     KEY_SD_STIFF_LONG,
     KEY_SD_IS_IYS_MIN,
@@ -3626,14 +3629,22 @@ class PlateGirderBridge:
         out[KEY_SD_LTB_MP]             = round(dr["ltb_Mpl_kNm"], 2)                                # kN·m — Cl.8.2.1.2 steel-only strength (not the composite Md)
 
         # ── 4g. Stiffener design summary (Table 5.7) ────────────────────────────
-        # Custom design → user-provided values; Optimized → designer-computed.
+        # "Provided" = user values (same as Additional Inputs / Output Dock, and used in
+        # the checks); "Required" = designer-computed minimums, reported separately.
         _is_custom_stiff = str(inp.get(KEY_DESIGN_MODE, "Optimized")).strip().lower() in {"custom", "customized"}
         def _rnum(v, nd=1):
+            if v is None:
+                return "NA"
             return round(v, nd) if isinstance(v, (int, float)) else v
-        out[KEY_SD_STIFF_METHOD]       = dr["stiff_method"]
-        out[KEY_SD_STIFF_INT_THICK]    = _rnum(dr["is_tq_mm"] if _is_custom_stiff else dr["stiff_int_thick_req"])
-        out[KEY_SD_STIFF_INT_SPACING]  = _rnum(dr["is_c_mm"]  if _is_custom_stiff else dr["stiff_int_space_req"])
-        out[KEY_SD_STIFF_END_THICK]    = _rnum(dr["bs_tq_mm"] if _is_custom_stiff else dr["stiff_end_thick_req"])
+        # Intermediate "Provided" only when the user turned them on (thickness stays seeded when off).
+        _int_on = str(inp.get(f"{KEY_MP_STIFFENER_INTERMEDIATE}.G1.M1", "No")).strip().lower() == "yes"
+        out[KEY_SD_STIFF_METHOD]          = dr["stiff_method"]
+        out[KEY_SD_STIFF_INT_THICK]       = _rnum(dr["is_tq_mm"]) if _int_on else "NA"
+        out[KEY_SD_STIFF_INT_THICK_REQ]   = _rnum(dr["stiff_int_thick_req"])
+        out[KEY_SD_STIFF_INT_SPACING]     = _rnum(dr["is_c_mm"]) if _int_on else "NA"
+        out[KEY_SD_STIFF_INT_SPACING_REQ] = _rnum(dr["stiff_int_space_req"])
+        out[KEY_SD_STIFF_END_THICK]       = _rnum(dr["bs_tq_mm"])
+        out[KEY_SD_STIFF_END_THICK_REQ]   = _rnum(dr["stiff_end_thick_req"])
         out[KEY_SD_STIFF_END_COUNT]    = dr["bs_n_plates"]
         # Longitudinal: only the user can specify them; optimizer adds none.
         _stiff_data  = inp.get("stiffener_by_member") or {}
