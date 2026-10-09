@@ -59,8 +59,8 @@ def median_rcc_barrier_load():
 
 # FIG 5(c): MEDIAN METALLIC CRASH BARRIER
 
-def median_metallic_barrier_load(barrier_type):
-    geom = median_metallic_barrier_area(barrier_type)
+def median_metallic_barrier_load(barrier_type, post_spacing=None):
+    geom = median_metallic_barrier_area(barrier_type, post_spacing)
 
     steel_load = 2 * load_from_area(geom["steel_area"], STEEL_DENSITY)
     kerb_load = 2 * load_from_area(geom["kerb_area"], RCC_DENSITY)
