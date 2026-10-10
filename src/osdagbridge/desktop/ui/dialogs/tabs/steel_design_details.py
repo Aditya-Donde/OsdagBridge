@@ -650,7 +650,9 @@ class SteelDesignDetailsTab(QWidget):
             except:
                 pass
                 
-            segments = [{"id": "G1M1", "start": 0.0, "end": length_m, "length": length_m}]
+            # Selected girder's member id, so the preview label and data follow the girder combo.
+            member_id = f"G{self._girder_index + 1}M1"
+            segments = [{"id": member_id, "start": 0.0, "end": length_m, "length": length_m}]
 
             # Drive the CAD from the same normalized values shown in the table so
             # the preview always matches the displayed stiffener details. The CAD
@@ -677,10 +679,10 @@ class SteelDesignDetailsTab(QWidget):
                 KEY_SD_SHEAR_LONGITUDINAL_SPACING: normalized_state.get("shear_longitudinal_spacing"),
             }
 
-            stiffener_by_member = {"G1M1": stiff_state}
-            
+            stiffener_by_member = {member_id: stiff_state}
+
             section_dims = {
-                "G1M1": {
+                member_id: {
                     "depth_mm": depth,
                     "top_flange_thickness_mm": tf_t,
                     "bottom_flange_thickness_mm": bf_t
@@ -690,6 +692,6 @@ class SteelDesignDetailsTab(QWidget):
             self.stiffener_preview.set_data(
                 segments=segments,
                 stiffener_by_member=stiffener_by_member,
-                active_member_id="G1M1",
+                active_member_id=member_id,
                 section_dims_by_member=section_dims
             )
