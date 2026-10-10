@@ -215,28 +215,26 @@ class Database:
 
     def get_nearest_station_temperature(self, lat: float, lon: float) -> Optional[Dict]:
         """
-        Find the nearest station with temperature data based on coordinates.
+        Find the nearest station with weather data based on coordinates.
         
-        Uses simplified Euclidean distance (sufficient for nearby points within India).
-        Returns station info and temperature data for the nearest match.
-            
+        Uses simplified Euclidean distance: sqrt((lat2-lat1)^2 + (lon2-lon1)^2)
         Returns:
-            Dict with keys: state, station, max_temp, min_temp, distance_deg
-            or None if no station with coordinates and temperature data exists.
+            Dict with keys: state, station, latitude, longitude, max_temp, min_temp, zone, z_value, wind_speed, distance_deg
+            or None if no station exists.
         """
-        # Query stations with coordinates and temperature data, calculate distance
-        # Using Euclidean approximation: sqrt((lat2-lat1)^2 + (lon2-lon1)^2)
         self.cursor.execute(
             """
             SELECT s.state, s.station, s.latitude, s.longitude,
                    t.max_temp, t.min_temp,
+                   z.zone, z.z_value,
+                   w.wind_speed,
                    ((s.latitude - ?) * (s.latitude - ?) + (s.longitude - ?) * (s.longitude - ?)) as dist_sq
             FROM stations s
-            INNER JOIN temperature_data t ON s.state = t.state AND s.station = t.station
+            LEFT JOIN temperature_data t ON s.state = t.state AND s.station = t.station
+            LEFT JOIN zone_data z        ON s.state = z.state AND s.station = z.station
+            LEFT JOIN windspeed_data w   ON s.state = w.state AND s.station = w.station
             WHERE s.latitude IS NOT NULL 
               AND s.longitude IS NOT NULL
-              AND t.max_temp IS NOT NULL
-              AND t.min_temp IS NOT NULL
             ORDER BY dist_sq ASC
             LIMIT 1
             """,
@@ -248,7 +246,7 @@ class Database:
             return None
         
         import math
-        distance_deg = math.sqrt(result[6]) if result[6] else 0
+        distance_deg = math.sqrt(result[9]) if result[9] else 0
         
         return {
             'state': result[0],
@@ -257,6 +255,9 @@ class Database:
             'longitude': result[3],
             'max_temp': result[4],
             'min_temp': result[5],
+            'zone': result[6],
+            'z_value': result[7],
+            'wind_speed': result[8],
             'distance_deg': round(distance_deg, 4),
         }
 

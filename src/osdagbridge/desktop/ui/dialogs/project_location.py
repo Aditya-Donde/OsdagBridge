@@ -344,7 +344,7 @@ class ProjectLocationDialog(QDialog):
         self.location_city_label.setVisible(False)
         right_layout.addWidget(self.location_city_label)
 
-        self.location_state_label = QLabel("State: —")
+        self.location_state_label = QLabel("State/Union Territory: —")
         self.location_state_label.setObjectName("valueLabel")
         self.location_state_label.setVisible(False)
         right_layout.addWidget(self.location_state_label)
@@ -389,7 +389,7 @@ class ProjectLocationDialog(QDialog):
         vbox.addWidget(label)
 
         state_col = QVBoxLayout()
-        state_lbl = QLabel("State")
+        state_lbl = QLabel("State/Union Territory")
         self.state_combo = NoScrollComboBox()
         self.state_combo.addItems(get_state_list())
         apply_field_style(self.state_combo)
@@ -1081,7 +1081,7 @@ class ProjectLocationDialog(QDialog):
         self.state_combo.blockSignals(True)
         self.district_combo.blockSignals(True)
         
-        # Reset to first item ("Select State")
+        # Reset to first item ("Select State/Union Territory")
         if self.state_combo.count() > 0:
             self.state_combo.setCurrentIndex(0)
         
@@ -1123,14 +1123,29 @@ class ProjectLocationDialog(QDialog):
         """Lookup wind, seismic zones and temperature for given coordinates and update UI."""
         global LAST_WEATHER_DATA, LAST_LOCATION_METHOD, LAST_LOCATION_DATA
         
-        zone_data = get_zones_for_coordinates(lat, lon)
-        temp_data = get_temperature_for_coordinates(lat, lon)
-        # Assuming that valid locations within India will always have a seismic zone/wind speed
-        missing_zone = not zone_data.get("seismic_zone")
-        missing_wind = zone_data.get("wind_Vb") in (None, "")
-        missing_max_temp = temp_data.get("max_temp") is None
-        missing_min_temp = temp_data.get("min_temp") is None
-        if missing_zone or missing_wind or missing_max_temp or missing_min_temp:
+        # Validate coordinates are roughly within India bounds
+        within_bounds = (6.0 <= lat <= 38.0 and 68.0 <= lon <= 98.0)
+        temp_data = get_temperature_for_coordinates(lat, lon) if within_bounds else {}
+        zone_data = get_zones_for_coordinates(lat, lon) if within_bounds else {}
+        
+        nearest_stn = temp_data.get("nearest_station")
+        nearest_st = temp_data.get("nearest_state")
+        st_weather = get_weather(nearest_st, nearest_stn) if nearest_st and nearest_stn else {}
+        
+        wind_speed = zone_data.get("wind_Vb") or st_weather.get("wind_speed")
+        seismic_zone = zone_data.get("seismic_zone") or st_weather.get("zone")
+        z_value = zone_data.get("zone_factor") or st_weather.get("z_value")
+        max_temp = temp_data.get("max_temp") or st_weather.get("max_temp")
+        min_temp = temp_data.get("min_temp") or st_weather.get("min_temp")
+        
+        if (
+            not within_bounds
+            or not nearest_stn
+            or max_temp is None
+            or min_temp is None
+            or not seismic_zone
+            or wind_speed is None
+        ):
             CustomMessageBox(
                 title="Location Error",
                 text="Data for this location is not available.\n (Outside of India)",
@@ -1148,13 +1163,14 @@ class ProjectLocationDialog(QDialog):
             LAST_LOCATION_DATA = None
             self._current_weather_data = None
             return False
+            
         # Convert to weather dict format for _update_irc_values
         weather = {
-            "wind_speed": zone_data.get("wind_Vb"),
-            "zone": zone_data.get("seismic_zone"),
-            "z_value": zone_data.get("zone_factor"),
-            "max_temp": temp_data.get("max_temp"),
-            "min_temp": temp_data.get("min_temp"),
+            "wind_speed": wind_speed,
+            "zone": seismic_zone,
+            "z_value": z_value,
+            "max_temp": max_temp,
+            "min_temp": min_temp,
         }
         
         # Clear location name selection since we're using map method
@@ -1232,7 +1248,7 @@ class ProjectLocationDialog(QDialog):
             return
         
         state = self.state_combo.currentText()
-        if not state or state == "Select State":
+        if not state or state in ("Select State", "Select State/Union Territory"):
             return # Should not happen if logic is correct
             
         weather = get_weather(state, district_name)
@@ -1304,7 +1320,7 @@ class ProjectLocationDialog(QDialog):
             self.location_city_label.setVisible(True)
             self.location_state_label.setVisible(True)
             self.location_city_label.setText(f"City: {city or '—'}")
-            self.location_state_label.setText(f"State: {state or '—'}")
+            self.location_state_label.setText(f"State/Union Territory: {state or '—'}")
         else:
             self.location_title_label.setVisible(False)
             self.location_city_label.setVisible(False)

@@ -34,7 +34,7 @@ def _with_db(func):
 def get_state_list(db: Database, include_placeholder: bool = True) -> List[str]:
     states = db.get_states_with_temperature() or []
     if include_placeholder:
-        return ["Select State", *states]
+        return ["Select State/Union Territory", *states]
     return states
 
 
