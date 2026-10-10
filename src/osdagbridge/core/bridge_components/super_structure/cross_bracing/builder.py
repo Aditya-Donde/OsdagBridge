@@ -70,14 +70,46 @@ def _is_enabled(val):
     return str(val).strip().lower() not in ("no", "false", "0", "none")
 
 
+# MEMBER ROLES
+# A bracing frame is built from three members — the diagonals, the top chord and the
+# bottom chord — and each is designed from its own section. They therefore need their
+# own hover labels, so the frame builders below return (role, shape) pairs rather than
+# bare shapes, and build_cross_bracings() groups them by (component, girder pair, role).
+#
+# These are plain in-memory tags used while the model is being built. They are not
+# KEY_* constants: they never go into input_dict or output_dict, and are not saved.
+ROLE_DIAGONAL     = "diagonal"
+ROLE_TOP_CHORD    = "top_chord"
+ROLE_BOTTOM_CHORD = "bottom_chord"
+ROLE_DIAPHRAGM    = "diaphragm"      # solid-beam end diaphragm (no chords/diagonals)
+
+ROLE_NAMES = {
+    ROLE_DIAGONAL:     "Diagonal",
+    ROLE_TOP_CHORD:    "Top Chord",
+    ROLE_BOTTOM_CHORD: "Bottom Chord",
+    ROLE_DIAPHRAGM:    "Diaphragm",
+}
+
+# The outer half of the grouping key, and also the key each component is registered
+# under in the CAD. Keep it in step with the checkbox -> AIS-key map in
+# cad_3d.update_component_visibility(), or the visibility checkbox stops matching.
+COMPONENT_CROSS_BRACING = "Cross Bracing"
+COMPONENT_END_DIAPHRAGM = "End Diaphragm"
+
+
 def _pk(key, pair_key):
-    """Insert pair_key into a KEY constant path right after its module-prefix segment.
+    """Append the girder pair to a KEY constant.
 
     e.g. _pk(KEY_MP_CB_DIAGONAL_LEG_H, 'G1G2')
-         -> 'member_properties.cross_bracing_details.G1G2.diagonal.leg_h'
+         -> 'member_properties.cross_bracing_details.diagonal.leg_h.G1G2'
+
+    This must match how the designer *writes* these values: populate_section_properties()
+    in crossbracingforces.py stores them via make_pair_key(key, pair_id), i.e.
+    f"{key}.{pair_id}".  An earlier version inserted the pair into the middle of the
+    path instead, so every lookup below missed and the CAD silently fell back to the
+    caller's default section dimensions — wrong geometry, not just a wrong tooltip.
     """
-    idx = key.index(".", key.index(".") + 1)  # position of second '.'
-    return key[:idx + 1] + pair_key + "." + key[idx + 1:]
+    return f"{key}.{pair_key}"
 
 
 # SECTION GEOMETRY CREATORS
@@ -514,7 +546,7 @@ def _x_bracing(x, yL, yR, depth, tf, flange_w,
         skew_angle: Bridge skew angle in degrees
         
     Returns:
-        list: List of bracing member shapes
+        list[tuple[str, TopoDS_Shape]]: (role, shape) pairs — see the ROLE_* constants.
     """
     # Calculate vertical positions (top and bottom of web)
     z_bot = -depth / 2
@@ -533,37 +565,37 @@ def _x_bracing(x, yL, yR, depth, tf, flange_w,
     # Create main X-diagonals using diagonal section
     braces = [
         # Left TOP → Right BOTTOM diagonal
-        _create_diagonal_member(
+        (ROLE_DIAGONAL, _create_diagonal_member(
             gp_Pnt(x_l, yL, z_top), 
             gp_Pnt(x_r, yR, z_bot),
             diagonal_thickness, diagonal_section_type, diagonal_dims, +1
-        ),
+        )),
         # Left BOTTOM → Right TOP diagonal
-        _create_diagonal_member(
+        (ROLE_DIAGONAL, _create_diagonal_member(
             gp_Pnt(x_l, yL, z_bot), 
             gp_Pnt(x_r, yR, z_top),
             diagonal_thickness, diagonal_section_type, diagonal_dims, -1
-        )
+        ))
     ]
     
     # Add optional bottom bracket using bottom chord section
     if bracket in ("LOWER", "BOTH"):
         braces.append(
-            _create_diagonal_member(
+            (ROLE_BOTTOM_CHORD, _create_diagonal_member(
                 gp_Pnt(x_l, yL, z_bot), 
                 gp_Pnt(x_r, yR, z_bot),
                 bottom_chord_thickness, bottom_chord_section_type, bottom_chord_dims, +1
-            )
+            ))
         )
     
     # Add optional top bracket using top chord section
     if bracket in ("UPPER", "BOTH"):
         braces.append(
-            _create_diagonal_member(
+            (ROLE_TOP_CHORD, _create_diagonal_member(
                 gp_Pnt(x_l, yL, z_top), 
                 gp_Pnt(x_r, yR, z_top),
                 top_chord_thickness, top_chord_section_type, top_chord_dims, +1
-            )
+            ))
         )
     
     return braces
@@ -604,7 +636,7 @@ def _k_bracing(x, yL, yR, depth, tf, flange_w,
         skew_angle: Bridge skew angle in degrees
         
     Returns:
-        list: List of bracing member shapes
+        list[tuple[str, TopoDS_Shape]]: (role, shape) pairs — see the ROLE_* constants.
     """
     # Calculate vertical positions
     z_bot = -depth / 2
@@ -627,33 +659,33 @@ def _k_bracing(x, yL, yR, depth, tf, flange_w,
     # Create K-pattern members
     braces = [
         # Left TOP → Middle BOTTOM diagonal (using diagonal section)
-        _create_diagonal_member(
+        (ROLE_DIAGONAL, _create_diagonal_member(
             gp_Pnt(x_l, yL, z_top), 
             gp_Pnt(x_m, ym, z_bot),
             diagonal_thickness, diagonal_section_type, diagonal_dims, +1
-        ),
+        )),
         # Right TOP → Middle BOTTOM diagonal (using diagonal section)
-        _create_diagonal_member(
+        (ROLE_DIAGONAL, _create_diagonal_member(
             gp_Pnt(x_r, yR, z_top), 
             gp_Pnt(x_m, ym, z_bot),
             diagonal_thickness, diagonal_section_type, diagonal_dims, -1
-        ),
+        )),
         # Bottom horizontal (mandatory for K-bracing, using bottom chord section)
-        _create_diagonal_member(
+        (ROLE_BOTTOM_CHORD, _create_diagonal_member(
             gp_Pnt(x_l, yL, z_bot), 
             gp_Pnt(x_r, yR, z_bot),
             bottom_chord_thickness, bottom_chord_section_type, bottom_chord_dims, +1
-        )
+        ))
     ]
     
     # Add optional top bracket using top chord section
     if top_bracket:
         braces.append(
-            _create_diagonal_member(
+            (ROLE_TOP_CHORD, _create_diagonal_member(
                 gp_Pnt(x_l, yL, z_top), 
                 gp_Pnt(x_r, yR, z_top),
                 top_chord_thickness, top_chord_section_type, top_chord_dims, +1
-            )
+            ))
         )
     
     return braces
@@ -700,14 +732,14 @@ def _diaphragm_bracing(x, yL, yR, depth, tf, thickness, section_type, dims, skew
     
     # Create horizontal diaphragm member
     return [
-        _create_diagonal_member(
+        (ROLE_DIAPHRAGM, _create_diagonal_member(
             gp_Pnt(x_l, yL, z_center), 
             gp_Pnt(x_r, yR, z_center),
             thickness, 
             section_type, 
             dims, 
             +1
-        )
+        ))
     ]
 
 
@@ -775,7 +807,11 @@ def build_cross_bracings(
 ):
 
     bracings = []
-    
+    # Parallel index of the same shapes, grouped as (component, pair_id, role) -> [shapes].
+    # The CAD layer uses it to give each member its own hover label; the flat list above
+    # is unchanged and is what the IFC export and the legacy display path still read.
+    bracing_groups = {}
+
     # Calculate bracing frame positions along the span
     # Number of internal panels
     n_internal = int(span_length_L / panel_spacing) - 1
@@ -793,6 +829,11 @@ def build_cross_bracings(
     for idx_x, x in enumerate(x_positions):
         # Loop through all bays between girders
         for i in range(num_girders - 1):
+            # Girder pair this bay sits between, e.g. "G1G2".  Defined here rather than
+            # inside the `if output_dict:` blocks below so _collect() can always group
+            # by it, even when no design snapshot was passed in.
+            bay_pair_id = f"G{i+1}G{i+2}"
+
             # Calculate lateral positions of left and right girders
             yL = (i * girder_spacing) - total_width / 2
             yR = yL + girder_spacing
@@ -814,11 +855,25 @@ def build_cross_bracings(
             # eff_depth/2 is the Z-coord of the top of the bracing frame (at center)
             z_offset = (reference_depth - eff_depth) / 2.0
             
-            def _apply_z_offset(shapes, dz):
-                if not dz: return shapes
+            def _apply_z_offset(tagged, dz):
+                """Shift a frame's (role, shape) pairs vertically, keeping the roles."""
+                if not dz: return tagged
                 trsf = gp_Trsf()
                 trsf.SetTranslation(gp_Vec(0, 0, dz))
-                return [BRepBuilderAPI_Transform(s, trsf, True).Shape() for s in shapes]
+                return [(role, BRepBuilderAPI_Transform(s, trsf, True).Shape())
+                        for role, s in tagged]
+
+            def _collect(tagged, dz, component, pair_id):
+                """Offset a frame, then record its shapes both ways.
+
+                Every shape still lands in the flat `bracings` list exactly as before.
+                The addition is `bracing_groups`, which keeps the same shapes filed
+                under (component, girder pair, role) so each member can be labelled
+                with its own designed section instead of one string for all of them.
+                """
+                for role, shape in _apply_z_offset(tagged, dz):
+                    bracings.append(shape)
+                    bracing_groups.setdefault((component, pair_id, role), []).append(shape)
 
             # Check if this is an end position (first or last frame)
             is_end = (x == x_positions[0] or x == x_positions[-1])
@@ -951,7 +1006,7 @@ def build_cross_bracings(
                                 p_ed_bracket_option,
                                 skew_angle=skew_angle
                         )
-                        bracings.extend(_apply_z_offset(frame, z_offset))
+                        _collect(frame, z_offset, COMPONENT_END_DIAPHRAGM, bay_pair_id)
                     elif p_ed_bracing_type == "K":
                         frame = _k_bracing(
                                 x_eff, yL, yR,
@@ -968,7 +1023,7 @@ def build_cross_bracings(
                                 p_ed_top_bracket,
                                 skew_angle=skew_angle
                         )
-                        bracings.extend(_apply_z_offset(frame, z_offset))
+                        _collect(frame, z_offset, COMPONENT_END_DIAPHRAGM, bay_pair_id)
                 
                 elif end_diaphragm_type == "Rolled Beam" or end_diaphragm_type == "Welded Beam":
                     diaphragm_dims = end_diaphragm_dims if end_diaphragm_dims is not None else {
@@ -993,7 +1048,7 @@ def build_cross_bracings(
                                 diaphragm_dims,
                                 skew_angle=skew_angle
                     )
-                    bracings.extend(_apply_z_offset(frame, z_offset))
+                    _collect(frame, z_offset, COMPONENT_END_DIAPHRAGM, bay_pair_id)
                 
                 continue
             
@@ -1090,7 +1145,7 @@ def build_cross_bracings(
                     p_bracket_option,
                     skew_angle=skew_angle
                 )
-                bracings.extend(_apply_z_offset(frame, z_offset))
+                _collect(frame, z_offset, COMPONENT_CROSS_BRACING, bay_pair_id)
             
             elif p_bracing_type == "K":
                 frame = _k_bracing(
@@ -1102,6 +1157,6 @@ def build_cross_bracings(
                     p_top_bracket,
                     skew_angle=skew_angle
                 )
-                bracings.extend(_apply_z_offset(frame, z_offset))
+                _collect(frame, z_offset, COMPONENT_CROSS_BRACING, bay_pair_id)
     
-    return bracings
+    return bracings, bracing_groups
