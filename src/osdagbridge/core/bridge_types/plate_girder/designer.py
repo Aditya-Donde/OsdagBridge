@@ -469,10 +469,10 @@ class BridgeConfig:
 
         # A rolled girder carries its IS catalogue label instead of the
         # plate-dimension designation; SteelSection looks it up in the catalogue.
-        # Its dimensions are already the catalogue ones:
-        # PlateGirderBridge._apply_rolled_section_dims writes them into the
-        # bridge's input dict before the pipeline runs, so analysis, design and CAD
-        # all size the same section.
+        # Its dimensions are already the catalogue ones: the Girder Details
+        # dialog (AdditionalInputs._on_girder_type_changed) writes them into the
+        # size keys when Rolled is picked, so analysis, design and CAD all size
+        # the same section.
         designation = ""
         if fabrication == "rolled":
             designation = str(_gv(inp, KEY_MP_GIRDER_IS_SECTION, girder_index)).strip()

@@ -566,55 +566,6 @@ class PlateGirderBridge:
                 if gi == 0:
                     _resolve_one(base_key, initial_sizing_mm)
 
-    def _apply_rolled_section_dims(self) -> None:
-        """
-        Overwrite a Rolled girder's dimensional keys in input_dict with its IS
-        catalogue section, in mm like the welded values the UI stores.
-
-        The Girder Details dialog only records Type + IS Section for a Rolled
-        girder and leaves the user's welded dimensions under these keys, so
-        switching back to Welded shows them unchanged. input_dict is this
-        bridge's own copy (see set_input), so the UI's dict is never touched;
-        analysis, design, CAD and the report all size the catalogue section.
-
-        Runs before _convert_girder_dims_mm_to_m, which converts these to metres.
-        Type/IS Section are resolved the way BridgeConfig.from_plate_girder_bridge
-        resolves them, so each girder's dimensions match its designation.
-        """
-        from osdagbridge.core.utils.common import (
-            KEY_MP_GIRDER_TYPE, KEY_MP_GIRDER_IS_SECTION, girder_catalog,
-        )
-
-        inp = self.input_dict
-        # Optimized mode only sizes welded girders (defaults.py forces Type to Welded).
-        if str(inp.get(KEY_DESIGN_MODE, '')).strip() == 'Optimized':
-            return
-
-        def _apply(suffix: str, i: int | None) -> None:
-            if str(self._girder_value(KEY_MP_GIRDER_TYPE, i)).strip().lower() != "rolled":
-                return
-            beam = girder_catalog.get_beam_profile(self._girder_value(KEY_MP_GIRDER_IS_SECTION, i))
-            if beam is None:
-                return
-            # Rolled I-sections are symmetric: one flange size for top and bottom.
-            dims_mm = {
-                KEY_MP_GIRDER_SYMMETRY:                "Girder Symmetric",
-                KEY_MP_GIRDER_DEPTH:                   beam.depth_mm,
-                KEY_MP_GIRDER_WEB_DEPTH:               beam.depth_mm - 2.0 * beam.flange_thickness_mm,
-                KEY_MP_GIRDER_WEB_THICKNESS:           beam.web_thickness_mm,
-                KEY_MP_GIRDER_TOP_FLANGE_WIDTH:        beam.flange_width_mm,
-                KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH:     beam.flange_width_mm,
-                KEY_MP_GIRDER_TOP_FLANGE_THICKNESS:    beam.flange_thickness_mm,
-                KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS: beam.flange_thickness_mm,
-            }
-            for base_key, value in dims_mm.items():
-                inp[f"{base_key}{suffix}"] = value
-
-        # Legacy scalar (un-suffixed) keys — read first by no-index consumers.
-        _apply("", None)
-        for gi in range(self._girder_count()):
-            _apply(f".G{gi + 1}.M1", gi)
-
     def _convert_girder_dims_mm_to_m(self) -> None:
         """
         Convert per-girder dimensional keys from mm back to SI metres in
@@ -767,7 +718,6 @@ class PlateGirderBridge:
         try:
             # Pre-stage: Unit conversions (must run before validation)
             self._resolve_optimized_bounds_to_mm()
-            self._apply_rolled_section_dims()
             self._convert_girder_dims_mm_to_m()
             
             # Stage 1: Input Validation
