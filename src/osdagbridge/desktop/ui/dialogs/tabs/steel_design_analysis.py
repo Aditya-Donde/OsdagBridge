@@ -174,7 +174,10 @@ class _HTMLDelegate(QStyledItemDelegate):
         painter.save()
         doc = QTextDocument()
         doc.setDefaultFont(options.font)
-        doc.setHtml(options.text)
+        # Explicitly enforce text color so dark mode system palettes do not render
+        # white text on the light dropdown item background.
+        text_color = "#000000" if (options.state & QStyle.State_Enabled) else "#888888"
+        doc.setHtml(f"<span style='color: {text_color};'>{options.text}</span>")
         options.text = ""
         style = options.widget.style() if options.widget else QApplication.style()
         style.drawControl(QStyle.CE_ItemViewItem, options, painter)
@@ -235,7 +238,10 @@ class RichTextComboBox(NoScrollComboBox):
         
         doc = QTextDocument()
         doc.setDefaultFont(self.font())
-        doc.setHtml(text)
+        # Explicitly enforce text color so dark mode system palettes do not render
+        # white text on the light combobox background.
+        text_color = "#000000" if self.isEnabled() else "#888888"
+        doc.setHtml(f"<span style='color: {text_color};'>{text}</span>")
         
         painter.save()
         painter.translate(text_rect.topLeft())
