@@ -520,7 +520,9 @@ class PlateGirderCADGenerator:
                 num_shear_studs_per_section=self.num_shear_studs_per_section,
                 shear_stud_transverse_spacing=self.shear_stud_transverse_spacing,
                 shear_stud_pitch=self.shear_stud_pitch,
-                right_guided=right_guided
+                right_guided=right_guided,
+                g_type=self.output_dict.get(f"{KEY_MP_GIRDER_TYPE}.G{i + 1}.M1"),
+                g_desig=self.output_dict.get(f"{KEY_MP_GIRDER_IS_SECTION}.G{i + 1}.M1")
             )
             
 

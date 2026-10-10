@@ -9,6 +9,7 @@ Plate Girder Geometry Builder (Geometry Only)
 
 import math
 import numpy as np
+import dataclasses
 from dataclasses import dataclass
 
 from OCC.Core.gp import gp_Pnt, gp_Vec, gp_Trsf, gp_Ax3, gp_Dir, gp_Ax2
@@ -20,6 +21,8 @@ from OCC.Core.BRepBuilderAPI import (
     BRepBuilderAPI_Transform
 )
 from OCC.Core.BRepAlgoAPI import BRepAlgoAPI_Fuse
+
+from osdagbridge.core.bridge_components.super_structure.rolled_beam.builder import get_rolled_girder, get_rolled_dims
 
 @dataclass
 class GirderSegment:
@@ -180,7 +183,9 @@ def build_plate_girder_geometry(
     num_shear_studs_per_section=2,         # Number of shear studs in the transverse direction
     shear_stud_transverse_spacing=100,     # Spacing between shear studs in the transverse direction
     shear_stud_pitch=200,                   # Pitch (longitudinal spacing) of shear stud rows
-    right_guided=False                     # If True: add tansverse constraints plate at the right and left end (for guided support conditions)
+    right_guided=False,                    # If True: add tansverse constraints plate at the right and left end (for guided support conditions)
+    g_type=None,
+    g_desig=None
 ):
     """
     Geometry-only Plate Girder builder for Osdag Bridge.
@@ -205,6 +210,11 @@ def build_plate_girder_geometry(
 
     # Reference top of girder (used to keep top flanges flush)
     Z_top = D / 2 + T_ft
+    dims = get_rolled_dims(g_type, g_desig)
+    if dims:
+        D, tw, B_ft, T_ft = dims
+        B_fb, T_fb = B_ft, T_ft
+        segments = [dataclasses.replace(s, D=D, tw=tw, T_ft=T_ft, T_fb=T_fb, B_ft=B_ft, B_fb=B_fb) for s in segments]
 
     web_shapes = []
     top_flange_shapes = []
@@ -212,6 +222,11 @@ def build_plate_girder_geometry(
 
     current_y = 0.0
     for seg in segments:
+        rolled = get_rolled_girder(g_type, g_desig, seg.length, Z_top, current_y)
+        if rolled is not None:
+            web_shapes.append(rolled)
+            current_y += seg.length
+            continue
         seg_z_web_center = Z_top - seg.T_ft - seg.D / 2
         
         # Web plate
@@ -405,7 +420,7 @@ def build_plate_girder_geometry(
     shear_studs = []
     if num_shear_studs_per_section > 0 and shear_stud_pitch > 0:
         base_stud = create_shear_stud(shear_stud_base_diameter, shear_stud_base_height, shear_stud_top_diameter, shear_stud_top_height)
-        z_stud = D / 2.0 + T_ft  # Place ON TOP of the top flange
+        z_stud = Z_top
         
         # Longitudinal stud placement (Y direction) 
         min_edge = 50.0
@@ -475,7 +490,6 @@ def build_plate_girder_geometry(
     supports_cyl = []
 
     # Calculate actual contact levels from the end segments
-    Z_top = D / 2 + T_ft
     seg_left = segments[0]
     seg_right = segments[-1]
     
