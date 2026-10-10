@@ -161,7 +161,7 @@ def get_zones_for_coordinates(lat: float, lon: float) -> Dict[str, Any]:
 
 def get_temperature_for_coordinates(lat: float, lon: float) -> Dict[str, Any]:
     """
-    Get temperature data for the nearest station to given coordinates.
+    Get temperature and nearest station data for given coordinates.
     
     Returns:
         Dictionary with keys:
@@ -169,6 +169,10 @@ def get_temperature_for_coordinates(lat: float, lon: float) -> Dict[str, Any]:
         - min_temp: Minimum temperature in °C (or None)
         - nearest_station: Name of the nearest station (or None)
         - nearest_state: State of the nearest station (or None)
+        - wind_speed: Wind speed from nearest station (or None)
+        - zone: Seismic zone from nearest station (or None)
+        - z_value: Zone factor from nearest station (or None)
+        - distance_deg: Distance in degrees to nearest station (or None)
     """
     from .database import Database
     
@@ -177,6 +181,10 @@ def get_temperature_for_coordinates(lat: float, lon: float) -> Dict[str, Any]:
         "min_temp": None,
         "nearest_station": None,
         "nearest_state": None,
+        "wind_speed": None,
+        "zone": None,
+        "z_value": None,
+        "distance_deg": None,
     }
     
     # Get the database path
@@ -196,6 +204,10 @@ def get_temperature_for_coordinates(lat: float, lon: float) -> Dict[str, Any]:
             result["min_temp"] = temp_data.get("min_temp")
             result["nearest_station"] = temp_data.get("station")
             result["nearest_state"] = temp_data.get("state")
+            result["wind_speed"] = temp_data.get("wind_speed")
+            result["zone"] = temp_data.get("zone")
+            result["z_value"] = temp_data.get("z_value")
+            result["distance_deg"] = temp_data.get("distance_deg")
     except Exception as e:
         print(f"Warning: Temperature lookup failed: {e}")
     
