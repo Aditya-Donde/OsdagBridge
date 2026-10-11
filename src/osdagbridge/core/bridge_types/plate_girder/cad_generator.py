@@ -22,6 +22,7 @@ Features:
 
 
 """
+from functools import partial
 from osdagbridge.core.utils.common import *
 from OCC.Core.Quantity import Quantity_Color, Quantity_TOC_RGB, Quantity_NOC_BLACK
 from OCC.Core.TopoDS import TopoDS_Shape
@@ -31,6 +32,9 @@ from OCC.Core.TopAbs import TopAbs_EDGE
 # Component builder imports
 from osdagbridge.core.bridge_components.super_structure.plate_girder.builder import (
     build_plate_girder_geometry, GirderSegment
+)
+from osdagbridge.core.bridge_components.super_structure.rolled_beam.builder import (
+    build_rolled_girder_geometry
 )
 from osdagbridge.core.bridge_components.super_structure.deck.builder import (
     build_deck
@@ -484,6 +488,19 @@ class PlateGirderCADGenerator:
                 g_num_longitudinal = self.num_longitudinal_stiffeners
                 g_longitudinal_thickness = self.longitudinal_stiffener_thickness
                 g_longitudinal_outstand = self.longitudinal_stiffener_outstand
+
+            # Fetch section type and designation for this particular girder (common.py keys)
+            g_section_type = self.output_dict.get(f"{KEY_MP_GIRDER_TYPE}.G{i + 1}.M1")
+            g_section_designation = self.output_dict.get(f"{KEY_MP_GIRDER_IS_SECTION}.G{i + 1}.M1")
+            g_rolled_section = girder_catalog.get_beam_profile(g_section_designation)
+
+            g_build_girder = build_plate_girder_geometry
+            if str(g_section_type).strip() == VALUES_GIRDER_TYPE[1] and g_rolled_section is not None:
+                g_build_girder = partial(
+                    build_rolled_girder_geometry,
+                    section=g_rolled_section,
+                    reference_top_z=self.girder_section_d / 2 + self.girder_section_tf,
+                )
             
             # Guided rule: girder j (1-indexed) has a transverse-constrained right support when
             # j's parity differs from N's parity and j is not the first or last girder.
@@ -492,7 +509,7 @@ class PlateGirderCADGenerator:
             right_guided = ((j % 2) != (N % 2)) and (1 < j < N)
 
                 
-            pg = build_plate_girder_geometry(
+            pg = g_build_girder(
                 D=self.girder_section_d,
                 tw=self.girder_section_tw,
                 length=self.span_length_L,
