@@ -1440,16 +1440,25 @@ class AdditionalInputs(QDialog):
         self._save_member_fields()
 
     def _on_is_section_changed(self, origin_key: str, target_widget: QWidget) -> None:  # END_CONNECTOR: writes the selected IS section's catalogue dimensions into the current Rolled member's size keys
+        """
+        Copy the selected IS Section's catalogue sizes into the current member's
+        size keys, so analysis, design and CAD all use the rolled section and not
+        the hidden welded fields. _save_member_fields skips these keys for a
+        Rolled member, so they are not overwritten later.
+        """
         from osdagbridge.core.bridge_types.plate_girder.initial_sizing import steel_i_section_properties
 
+        # Only a Rolled member takes its sizes from the IS Section
         type_w       = self.findChild(QComboBox, KEY_MP_GIRDER_TYPE)
         is_section_w = self.findChild(QComboBox, KEY_MP_GIRDER_IS_SECTION)
         if type_w is None or is_section_w is None or type_w.currentText().strip().lower() != "rolled":
             return
+        # Depth, flange widths/thicknesses and web thickness (mm) from the catalogue
         dims = get_is_section_dimensions(is_section_w.currentText())
         if not dims:
             return
-        # Web depth from the single source of the steel-section equations
+        # Web depth is not in the catalogue; derive it from the single source
+        # of the steel-section equations
         dims[KEY_MP_GIRDER_WEB_DEPTH] = steel_i_section_properties(
             D=dims[KEY_MP_GIRDER_DEPTH],
             bf_top=dims[KEY_MP_GIRDER_TOP_FLANGE_WIDTH], tf_top=dims[KEY_MP_GIRDER_TOP_FLANGE_THICKNESS],
@@ -1457,6 +1466,7 @@ class AdditionalInputs(QDialog):
             tw=dims[KEY_MP_GIRDER_WEB_THICKNESS],
         )[KEY_MP_GIRDER_WEB_DEPTH]
 
+        # Write to the girder/member currently selected in the dialog
         gi, mi = self._get_current_girder_member_indices()
         for key, value in dims.items():
             self.working_input_dict[f"{key}.G{gi}.M{mi}"] = value
