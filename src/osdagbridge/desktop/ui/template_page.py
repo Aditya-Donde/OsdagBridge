@@ -820,13 +820,6 @@ class CustomWindow(QWidget):
             
     # Function for saving input dictionary into an OSI file
     def saveOSI_inputs(self):
-        # Populate additional input defaults so they appear in the saved file
-        # even if the user never opened the Additional Inputs dialog.
-        try:
-            solve_extend_basic_input_dict(self.input_dict)
-        except Exception:
-            pass
-
         default_dir = os.path.join(get_documents_folder(), "inputs.osi")
         filePath, _ = QFileDialog.getSaveFileName(self,
                 "Save Design Inputs",
