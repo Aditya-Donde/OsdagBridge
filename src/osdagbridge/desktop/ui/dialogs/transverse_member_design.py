@@ -84,6 +84,10 @@ from osdagbridge.core.utils.common import (
     KEY_MP_CB_NO_OF_CROSS_BRACINGS,
     KEY_MP_CB_SPACING,
     KEY_DESIGN_MODE,
+    KEY_CROSS_BRACING,
+    KEY_END_DIAPHRAGM,
+    KEY_TD_CB_SECTION_INPUTS_MATERIAL_GRADE,
+    KEY_TD_ED_SECTION_INPUTS_MATERIAL_GRADE,
 )
 
 # ── Style constants ───────────────────────────────────────────────────────────
@@ -1068,6 +1072,13 @@ class TransverseMemberDesign(QDialog):
         design_w = self._widgets.get(KEY_TD_CB_SECTION_INPUTS_DESIGN)
         if design_w:
             design_w.setText("Cross Bracing")
+        
+        # Display the selected cross-bracing material grade.
+        output_dict = getattr(self._backend, "output_dict", {}) or {}
+        grade_w = self._widgets.get(KEY_TD_CB_SECTION_INPUTS_MATERIAL_GRADE)
+
+        if grade_w:
+            grade_w.setText(str(output_dict.get(KEY_CROSS_BRACING) or ""))
 
         no_cb_w = self._widgets.get(KEY_TD_CB_SECTION_INPUTS_NO_OF_CB)
         if no_cb_w:
@@ -1177,6 +1188,13 @@ class TransverseMemberDesign(QDialog):
         design_w = self._widgets.get(KEY_TD_ED_SECTION_INPUTS_DESIGN)
         if design_w:
             design_w.setText("End Diaphragm")
+
+        # Display the selected end-diaphragm material grade.
+        output_dict = getattr(self._backend, "output_dict", {}) or {}
+        grade_w = self._widgets.get(KEY_TD_ED_SECTION_INPUTS_MATERIAL_GRADE)
+
+        if grade_w:
+            grade_w.setText(str(output_dict.get(KEY_END_DIAPHRAGM) or ""))
 
         no_cb_w = self._widgets.get(KEY_TD_ED_SECTION_INPUTS_NO_OF_CB)
         if no_cb_w:
