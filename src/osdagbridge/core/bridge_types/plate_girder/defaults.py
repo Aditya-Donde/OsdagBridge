@@ -103,7 +103,7 @@ from osdagbridge.core.utils.common import (
     VALUES_END_DIAPHRAGM_TYPE,
     VALUES_NO_YES,
     VALUES_CROSS_BRACING_TYPE,
-    get_angle_section_properties, get_is_section_list,
+    get_angle_section_properties, get_is_section_list, girder_catalog,
 
     KEY_DO_GAMMA_C_BASIC, KEY_DO_GAMMA_C_ACCIDENTAL, KEY_DO_GAMMA_M0, KEY_DO_GAMMA_M1, KEY_DO_GAMMA_S,
     KEY_DO_GAMMA_V, KEY_DO_GAMMA_FLT, KEY_DO_GAMMA_MF, KEY_DO_LOAD_CYCLES, KEY_DO_CAMBER_MODE,
@@ -548,6 +548,33 @@ def _extend_member_field_keys(working_input_dict: dict, girder_id: str, member_f
                 print(f"@@: Update {key+suffix} = {seed_val}")
                 working_input_dict[key + suffix] = seed_val
 
+# Size keys a Rolled member takes from its IS catalogue section: key -> get_rolled_section() field
+_ROLLED_SIZE_FIELDS = {
+    KEY_MP_GIRDER_DEPTH:                   "depth_mm",
+    KEY_MP_GIRDER_TOP_FLANGE_WIDTH:        "top_flange_width_mm",
+    KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH:     "bottom_flange_width_mm",
+    KEY_MP_GIRDER_TOP_FLANGE_THICKNESS:    "top_flange_thickness_mm",
+    KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS: "bottom_flange_thickness_mm",
+    KEY_MP_GIRDER_WEB_THICKNESS:           "web_thickness_mm",
+}
+
+def apply_rolled_section_sizes(working_input_dict: dict, suffix: str = "") -> None:
+    """
+    Write a Rolled member's IS catalogue sizes (mm) into its size keys, so they
+    always describe the section named by its IS Section. No-op for Welded.
+    suffix: "" for the base keys, or ".G{n}.M{m}" for one member.
+    """
+    if str(working_input_dict.get(KEY_MP_GIRDER_TYPE + suffix, "")).strip().lower() != "rolled":
+        return
+    sec = girder_catalog.get_rolled_section(working_input_dict.get(KEY_MP_GIRDER_IS_SECTION + suffix))
+    if not sec:
+        return
+    for key, field in _ROLLED_SIZE_FIELDS.items():
+        working_input_dict[key + suffix] = sec[field]
+    working_input_dict[KEY_MP_GIRDER_WEB_DEPTH + suffix] = (
+        sec["depth_mm"] - sec["top_flange_thickness_mm"] - sec["bottom_flange_thickness_mm"]
+    )
+
 def _on_no_of_girders_changed(working_input_dict: dict) -> None:
     """
     Regenerate all dynamic per-girder/member keys for the given girder count.
@@ -709,6 +736,11 @@ def _on_no_of_girders_changed(working_input_dict: dict) -> None:
         # when their per-girder key doesn't exist (e.g. G5.M1 for 4-girder bridge).
         for base_key, value in MP_GIRDER_PROPS:
             working_input_dict[base_key] = value
+
+        # A Rolled member keeps its IS catalogue sizes, not the auto-sizing ones above.
+        apply_rolled_section_sizes(working_input_dict)
+        for girder_idx in range(1, count + 1):
+            apply_rolled_section_sizes(working_input_dict, f".G{girder_idx}.M1")
 
     # ── Stiffener ─────────────────────────────────────────────────────────────
 

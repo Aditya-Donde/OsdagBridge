@@ -22,7 +22,7 @@ from osdagbridge.desktop.ui.dialogs.additional_input.ui_builder.common_ui_builde
 from osdagbridge.core.bridge_types.plate_girder.ui_fields_additional_input import ADDITIONAL_INPUTS_SCHEMA
 from osdagbridge.desktop.ui.dialogs.additional_input.ui_builder._load_combination_widget import LoadCombinationWidget
 from osdagbridge.desktop.ui.dialogs.additional_input.ui_builder.common_ui_builder import AdaptiveWidget
-from osdagbridge.core.bridge_types.plate_girder.defaults import extend_cb_dynamic_keys
+from osdagbridge.core.bridge_types.plate_girder.defaults import extend_cb_dynamic_keys, apply_rolled_section_sizes
 # =================================================================================
 #   MAIN IMPLEMENTATION
 # =================================================================================
@@ -1243,16 +1243,6 @@ class AdditionalInputs(QDialog):
         KEY_MP_GIRDER_TORSION_CONSTANT_IT, KEY_MP_GIRDER_WARPING_CONSTANT_IW,
     ]
 
-    # Size keys a Rolled member takes from the IS catalogue: key -> get_rolled_section() field
-    _ROLLED_SIZE_KEYS = {
-        KEY_MP_GIRDER_DEPTH:                   "depth_mm",
-        KEY_MP_GIRDER_TOP_FLANGE_WIDTH:        "top_flange_width_mm",
-        KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH:     "bottom_flange_width_mm",
-        KEY_MP_GIRDER_TOP_FLANGE_THICKNESS:    "top_flange_thickness_mm",
-        KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS: "bottom_flange_thickness_mm",
-        KEY_MP_GIRDER_WEB_THICKNESS:           "web_thickness_mm",
-    }
-
     def _update_apply_button_visibility(self, origin_key: str, target_widget: QWidget) -> None:  # END_CONNECTOR: shows Exterior/Interior Apply button based on selected girder position
         """Show/hide Apply Exterior or Apply Interior button based on selected girder index."""
         count = int(float(str(self.working_input_dict.get(KEY_TS_NO_OF_GIRDERS) or 1)))
@@ -1347,18 +1337,6 @@ class AdditionalInputs(QDialog):
             # To Update Section Properties
             is_section_w = _live_widget(KEY_MP_GIRDER_IS_SECTION)
             if isinstance(is_section_w, QComboBox):
-                # Rolled shares the welded size keys: store the IS catalogue sizes (mm)
-                # in the dict. _save_member_fields skips these keys while Rolled.
-                sec = girder_catalog.get_rolled_section(is_section_w.currentText())
-                if sec:
-                    gi, mi = self._get_current_girder_member_indices()
-                    sizes_mm = {key: sec[field] for key, field in self._ROLLED_SIZE_KEYS.items()}
-                    sizes_mm[KEY_MP_GIRDER_WEB_DEPTH] = (
-                        sec["depth_mm"] - sec["top_flange_thickness_mm"] - sec["bottom_flange_thickness_mm"]
-                    )
-                    for key, mm in sizes_mm.items():
-                        self.working_input_dict[f"{key}.G{gi}.M{mi}"] = mm
-                        self.working_input_dict[key] = mm  # un-suffixed key, read first by edge beams
                 is_section_w.currentTextChanged.emit(is_section_w.currentText())
 
         self._update_section_drawing()
@@ -1467,14 +1445,7 @@ class AdditionalInputs(QDialog):
         suffix = f".G{gi}.M{mi}"
         # print(f"[SAVE_MEMBER_FIELDS] G{gi}.M{mi}")
 
-        # A Rolled member's sizes are the catalogue ones set in _on_girder_type_changed;
-        # its hidden welded fields must not overwrite them.
-        type_w = self.findChild(QComboBox, KEY_MP_GIRDER_TYPE)
-        is_rolled = type_w is not None and type_w.currentText().strip().lower() == "rolled"
-
         for key in self._MEMBER_FIELD_KEYS:
-            if is_rolled and key in self._ROLLED_SIZE_KEYS:
-                continue
             w = self.findChild(QWidget, key)
 
             if isinstance(w, AdaptiveWidget):
@@ -1512,6 +1483,10 @@ class AdditionalInputs(QDialog):
                             self.working_input_dict[key + suffix + ".value"] = text
                 else:
                     print(f"  [SAVE] {key} — widget not found: {type(w)}")
+
+        # A Rolled member's sizes come from its IS Section, not the hidden welded fields.
+        apply_rolled_section_sizes(self.working_input_dict, suffix)
+        apply_rolled_section_sizes(self.working_input_dict)
 
     def _load_member_fields(self, gi: int, mi: int) -> None:  # utility: restores Girder Details widgets from working_input_dict G{i}.M{j} keys
         #  We firstly load all values in block mode and collect all widgets
