@@ -1876,6 +1876,25 @@ def get_is_section_properties(designation: str) -> Optional[dict]:
         "iw":    beam.warping_constant_cm6,
     }
 
+def get_is_section_dimensions(designation: str) -> Optional[dict]:
+    """Return the dimensions (mm) of the given designation, keyed by the girder
+    size keys (KEY_MP_GIRDER_*) used in working_input_dict. Rolled I-sections are
+    symmetric: one flange size for top and bottom.
+
+    designation must be a catalogue name (e.g. "JB 150"). The IS Section combo
+    only lists get_is_section_list() names, so no not-found check is done here.
+    """
+    beam = girder_catalog.get_beam_profile(designation)
+    # Same flange plate on top and bottom, so each flange value is used twice
+    return {
+        KEY_MP_GIRDER_DEPTH:                   beam.depth_mm,
+        KEY_MP_GIRDER_TOP_FLANGE_WIDTH:        beam.flange_width_mm,
+        KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH:     beam.flange_width_mm,
+        KEY_MP_GIRDER_TOP_FLANGE_THICKNESS:    beam.flange_thickness_mm,
+        KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS: beam.flange_thickness_mm,
+        KEY_MP_GIRDER_WEB_THICKNESS:           beam.web_thickness_mm,
+    }
+
 def get_angle_designation_list() -> list[str]:
     """Return sorted list of all angle designations (equal + unequal) from the database."""
     if not _DB_PATH.exists():

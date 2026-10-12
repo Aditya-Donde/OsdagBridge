@@ -1243,6 +1243,12 @@ class AdditionalInputs(QDialog):
         KEY_MP_GIRDER_TORSION_CONSTANT_IT, KEY_MP_GIRDER_WARPING_CONSTANT_IW,
     ]
 
+    # Size keys a Rolled member takes from its IS Section (see _on_is_section_changed)
+    _ROLLED_SIZE_KEYS = (
+        KEY_MP_GIRDER_DEPTH, KEY_MP_GIRDER_TOP_FLANGE_WIDTH, KEY_MP_GIRDER_TOP_FLANGE_THICKNESS,
+        KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH, KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS, KEY_MP_GIRDER_WEB_THICKNESS,
+    )
+
     def _update_apply_button_visibility(self, origin_key: str, target_widget: QWidget) -> None:  # END_CONNECTOR: shows Exterior/Interior Apply button based on selected girder position
         """Show/hide Apply Exterior or Apply Interior button based on selected girder index."""
         count = int(float(str(self.working_input_dict.get(KEY_TS_NO_OF_GIRDERS) or 1)))
@@ -1433,6 +1439,39 @@ class AdditionalInputs(QDialog):
         gi, mi = self._get_current_girder_member_indices()
         self._save_member_fields()
 
+    def _on_is_section_changed(self, origin_key: str, target_widget: QWidget) -> None:  # END_CONNECTOR: writes the selected IS section's catalogue dimensions into the current Rolled member's size keys
+        """
+        Copy the selected IS Section's catalogue sizes into the current member's
+        size keys, so analysis, design and CAD all use the rolled section and not
+        the hidden welded fields. _save_member_fields skips these keys for a
+        Rolled member, so they are not overwritten later.
+        """
+        from osdagbridge.core.bridge_types.plate_girder.initial_sizing import steel_i_section_properties
+
+        # Only a Rolled member takes its sizes from the IS Section
+        type_w       = self.findChild(QComboBox, KEY_MP_GIRDER_TYPE)
+        is_section_w = self.findChild(QComboBox, KEY_MP_GIRDER_IS_SECTION)
+        if type_w is None or is_section_w is None or type_w.currentText().strip().lower() != "rolled":
+            return
+        # Depth, flange widths/thicknesses and web thickness (mm) from the catalogue
+        dims = get_is_section_dimensions(is_section_w.currentText())
+        if not dims:
+            return
+        # Web depth is not in the catalogue; derive it from the single source
+        # of the steel-section equations
+        dims[KEY_MP_GIRDER_WEB_DEPTH] = steel_i_section_properties(
+            D=dims[KEY_MP_GIRDER_DEPTH],
+            bf_top=dims[KEY_MP_GIRDER_TOP_FLANGE_WIDTH], tf_top=dims[KEY_MP_GIRDER_TOP_FLANGE_THICKNESS],
+            bf_bot=dims[KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH], tf_bot=dims[KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS],
+            tw=dims[KEY_MP_GIRDER_WEB_THICKNESS],
+        )[KEY_MP_GIRDER_WEB_DEPTH]
+
+        # Write to the girder/member currently selected in the dialog
+        gi, mi = self._get_current_girder_member_indices()
+        for key, value in dims.items():
+            self.working_input_dict[f"{key}.G{gi}.M{mi}"] = value
+            self.working_input_dict[key] = value  # un-suffixed key, read first by edge beams
+
     def _get_current_girder_member_indices(self) -> tuple[int, int]:  # utility: returns (girder_index, member_index) 1-based from current combo selections
         girder_combo = self.findChild(QComboBox, KEY_MP_GD_SELECT_GIRDER)
         member_combo = self.findChild(QComboBox, KEY_MP_GD_MEMBER_ID)
@@ -1445,7 +1484,14 @@ class AdditionalInputs(QDialog):
         suffix = f".G{gi}.M{mi}"
         # print(f"[SAVE_MEMBER_FIELDS] G{gi}.M{mi}")
 
+        # A Rolled member's sizes come from its IS Section (_on_is_section_changed);
+        # its hidden welded fields must not overwrite them.
+        type_w = self.findChild(QComboBox, KEY_MP_GIRDER_TYPE)
+        is_rolled = type_w is not None and type_w.currentText().strip().lower() == "rolled"
+
         for key in self._MEMBER_FIELD_KEYS:
+            if is_rolled and key in self._ROLLED_SIZE_KEYS:
+                continue
             w = self.findChild(QWidget, key)
 
             if isinstance(w, AdaptiveWidget):
