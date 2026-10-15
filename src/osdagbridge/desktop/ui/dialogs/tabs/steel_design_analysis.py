@@ -174,7 +174,10 @@ class _HTMLDelegate(QStyledItemDelegate):
         painter.save()
         doc = QTextDocument()
         doc.setDefaultFont(options.font)
-        doc.setHtml(options.text)
+        app = QApplication.instance()
+        theme = getattr(app, "theme", "light") if app else "light"
+        text_color = "#FFFFFF" if theme == "dark" else "#000000"
+        doc.setHtml(f"<span style='color: {text_color};'>{options.text}</span>")
         options.text = ""
         style = options.widget.style() if options.widget else QApplication.style()
         style.drawControl(QStyle.CE_ItemViewItem, options, painter)
@@ -235,7 +238,10 @@ class RichTextComboBox(NoScrollComboBox):
         
         doc = QTextDocument()
         doc.setDefaultFont(self.font())
-        doc.setHtml(text)
+        app = QApplication.instance()
+        theme = getattr(app, "theme", "light") if app else "light"
+        text_color = "#FFFFFF" if theme == "dark" else "#000000"
+        doc.setHtml(f"<span style='color: {text_color};'>{text}</span>")
         
         painter.save()
         painter.translate(text_rect.topLeft())
