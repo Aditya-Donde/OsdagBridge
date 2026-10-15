@@ -272,6 +272,7 @@ def main():
 
     # Create the Qt application instance
     app = QApplication(sys.argv)
+    app.theme = "light"
 
     # Application-wide icon: taskbar, Alt-Tab, and default window icon.
     icon = _app_icon()
