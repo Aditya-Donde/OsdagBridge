@@ -733,7 +733,7 @@ class CAD3DWindow(QWidget):
 
         # Visibility: (ais, was_displayed) for every registered object, so the
         # user's checkbox selection survives report generation.
-        ais_groups = list(self.viewer.model_ais_objects.values())
+        ais_groups = list(self.viewer.hover.model_ais_objects.values())
         ais_groups.append(getattr(self.viewer, 'deck_texture_ais', []))
         for ais_list in ais_groups:
             for ais in ais_list:
