@@ -723,9 +723,9 @@ class AdditionalInputs(QDialog):
             cb_type.setCurrentText("IRC 5 - High Containment RCC Crash Barrier")
             cb_type.setCurrentText(cur)
 
-        # Refresh median for correct compute value
+        # Refresh median for correct compute value (skipped when no median is included)
         md_type = self.findChild(QComboBox, KEY_MD_TYPE)
-        if md_type:
+        if md_type and str(self.working_input_dict.get(KEY_INCLUDE_MEDIAN)).strip().lower() == "yes":
             cur = md_type.currentText()
             md_type.setCurrentText("IRC 5 - Raised Kerb")
             md_type.setCurrentText(cur)
@@ -1038,6 +1038,10 @@ class AdditionalInputs(QDialog):
         self.update_girder_layout("spacing")
 
     def compute_median_values(self, input_dict: dict) -> dict:
+        # Median width must stay 0 when no median is included, or the layout solver adds it to the bridge width.
+        if str(input_dict.get(KEY_INCLUDE_MEDIAN)).strip().lower() != "yes":
+            return {}
+
         from osdagbridge.core.utils.codes.irc5_2015 import IRC5_2015
         from osdagbridge.core.bridge_components.super_structure.median.geometry import (
             median_raised_kerb_area, median_rcc_crash_barrier_area,
