@@ -52,48 +52,29 @@ def _translate(shape, x=0, y=0, z=0):
 
 def calculate_deck_width(
     *,
-    footpath_config,
     carriageway_width,
-    crash_barrier_base_width,
-    footpath_width,
-    railing_width
+    crash_barrier_base_width
 ):
-    if footpath_config == "NONE":
-        return carriageway_width + 2 * crash_barrier_base_width
+    """Width of the deck slab: carriageway plus the two crash barriers.
 
-    elif footpath_config in ("LEFT", "RIGHT"):
-        return (
-            carriageway_width
-            + 2 * crash_barrier_base_width
-            + footpath_width
-            + railing_width
-        )
-
-    elif footpath_config == "BOTH":
-        return (
-            carriageway_width
-            + 2 * crash_barrier_base_width
-            + 2 * footpath_width
-            + 2 * railing_width
-        )
-
-    else:
-        raise ValueError(f"Invalid footpath_config: {footpath_config}")
+    The footpath is not part of the deck — it builds its own slab outboard of
+    the deck edge, and carries the railing on it (see footpath/builder.py).
+    """
+    return carriageway_width + 2 * crash_barrier_base_width
 
 
 def calculate_carriageway_center_y(
     *,
-    footpath_config,
     total_deck_width,
     carriageway_width,
-    crash_barrier_base_width,
-    footpath_width,
-    railing_width
+    crash_barrier_base_width
 ):
     """
     Calculates carriageway center Y coordinate.
-    
-    Deck is centered at Y = 0.
+
+    Deck is centered at Y = 0.  The deck is the carriageway plus a crash
+    barrier on each side, so the carriageway is centred on the deck whatever
+    the footpath configuration — the footpaths sit outboard of the deck.
     """
 
     # Start from LEFT edge of deck
@@ -101,10 +82,6 @@ def calculate_carriageway_center_y(
 
     # Left crash barrier always exists
     y += crash_barrier_base_width
-
-    # Optional left footpath + railing
-    if footpath_config in ("LEFT", "BOTH"):
-        y += footpath_width + railing_width
 
     # Move to center of carriageway
     y += carriageway_width / 2
@@ -376,31 +353,22 @@ def build_deck(
     girder_section_d,
     deck_thickness,
 
-    footpath_config,
     carriageway_width,
     crash_barrier_base_width,
-    footpath_width,
-    railing_width,
     skew_angle=0
 ):
-    
+
 
     total_deck_width = calculate_deck_width(
-        footpath_config=footpath_config,
         carriageway_width=carriageway_width,
-        crash_barrier_base_width=crash_barrier_base_width,
-        footpath_width=footpath_width,
-        railing_width=railing_width
+        crash_barrier_base_width=crash_barrier_base_width
     )
 
-    
+
     carriageway_center_y = calculate_carriageway_center_y(
-        footpath_config=footpath_config,
         total_deck_width=total_deck_width,
         carriageway_width=carriageway_width,
-        crash_barrier_base_width=crash_barrier_base_width,
-        footpath_width=footpath_width,
-        railing_width=railing_width
+        crash_barrier_base_width=crash_barrier_base_width
     )
 
 
