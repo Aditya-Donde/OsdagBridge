@@ -1647,6 +1647,9 @@ END_CONNECTORS = [
     (KEY_MP_GIRDER_WEB_TYPE,                KEY_MP_GD_MEMBER_ID, "_save_member_fields_connector"),
     (KEY_MP_GIRDER_IS_SECTION,              KEY_MP_GD_MEMBER_ID, "_save_member_fields_connector"),
 
+    # On change of IS Section (Rolled) — write its catalogue dimensions into the member's size keys
+    (KEY_MP_GIRDER_IS_SECTION,              KEY_MP_GD_MEMBER_ID, "_on_is_section_changed"),
+
     # Adaptive fields — Custom mode (QLineEdit/QComboBox) wired via wire_end_connectors;
     # Optimized mode (TYPE_BOUND_BTN) save is handled directly by _on_bounds_accepted.
     (KEY_MP_GIRDER_DEPTH,                   KEY_MP_GD_MEMBER_ID, "_save_member_fields_connector"),
