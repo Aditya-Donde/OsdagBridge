@@ -1084,6 +1084,7 @@ KEY_TD_ED_TAB = "transverse_member_design.ed.tab"
 
 # Transverse Member Design - Cross Bracing Design Keys
 KEY_TD_CB_SECTION_INPUTS_DESIGN = "transverse_member_design.cb.section_inputs.design"
+KEY_TD_CB_SECTION_INPUTS_MATERIAL_GRADE = "transverse_member_design.cb.section_inputs.material_grade"
 KEY_TD_CB_SECTION_INPUTS_NO_OF_CB = "transverse_member_design.cb.section_inputs.no_of_cb"
 KEY_TD_CB_SECTION_INPUTS_BRACING_TYPE = "transverse_member_design.cb.section_inputs.bracing_type"
 KEY_TD_CB_SECTION_INPUTS_CONNECTION_TYPE = "transverse_member_design.cb.section_inputs.connection_type"
@@ -1157,6 +1158,7 @@ KEY_TD_CB_BOTTOM_CHORD_PROP_ZUV = "transverse_member_design.cb.section_propertie
 # Transverse Member Design - End Diaphragm Section Inputs Keys
 KEY_TD_ED_SECTION_INPUTS_TYPE = "transverse_member_design.ed.section_inputs.type"
 KEY_TD_ED_SECTION_INPUTS_DESIGN = "transverse_member_design.ed.section_inputs.design"
+KEY_TD_ED_SECTION_INPUTS_MATERIAL_GRADE = "transverse_member_design.ed.section_inputs.material_grade"
 KEY_TD_ED_SECTION_INPUTS_NO_OF_CB = "transverse_member_design.ed.section_inputs.no_of_cb"
 KEY_TD_ED_SECTION_INPUTS_BRACING_TYPE = "transverse_member_design.ed.section_inputs.bracing_type"
 KEY_TD_ED_SECTION_INPUTS_CONNECTION_TYPE = "transverse_member_design.ed.section_inputs.connection_type"
