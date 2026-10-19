@@ -966,15 +966,15 @@ def ch5_design_checks(checks_data, bridge, chart_paths=None) -> str:
         cb_slenderness_groups.append(("Between Girders", [["Diagonal", "C", "", "", "---"]]))
     else:
         for pair in pairs:
-            kl_diag = bridge.get_cb_effective_length("diagonal")
+            kl_diag = bridge.get_cb_effective_length(pair, "diagonal")
             slnd_diag = bridge.get_cb_slenderness(pair, "diagonal")
             status_diag = get_status_str(slnd_diag, 250)
             
-            kl_tc = bridge.get_cb_effective_length("chord")
+            kl_tc = bridge.get_cb_effective_length(pair, "chord")
             slnd_tc = bridge.get_cb_slenderness(pair, "chord")
             status_tc = get_status_str(slnd_tc, 250)
             
-            kl_bc = bridge.get_cb_effective_length("chord")
+            kl_bc = bridge.get_cb_effective_length(pair, "chord")
             slnd_bc = bridge.get_cb_slenderness(pair, "chord")
             status_bc = get_status_str(slnd_bc, 400)
             
