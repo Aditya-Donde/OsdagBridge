@@ -510,6 +510,8 @@ class ReportChartGenerator:
 
     def generate_utilization_ratio_charts(self, bridge):
         try:
+            from osdagbridge.core.reports.executive_summary import _governing_member
+
             output = bridge.output_dict or {}
             steel = self._max_dcr((output.get("design_results", {}) or {}).get("per_girder", {}))
             deck_rpt = output.get("deck_report_values", {}) or {}
@@ -535,7 +537,9 @@ class ReportChartGenerator:
                         if n > 0:
                             cb_values.append(n)
             cross_bracing = max(cb_values) if cb_values else self._max_dcr(output.get("crossbracing_design_results", {}))
-            end_diaphragm = self._max_dcr(output.get("end_diaphragm_design_results", {}))
+            end_diaphragm, _ = _governing_member(
+                output.get("end_diaphragm_design_results", {})
+            )
             return {"ur_summary": self._save_ur_chart(
                 "utilization_ratio_summary.pdf",
                 ["Steel Plate\nGirders", "Concrete\nDeck Slab", "Cross\nBracing", "End\nDiaphragms"],
