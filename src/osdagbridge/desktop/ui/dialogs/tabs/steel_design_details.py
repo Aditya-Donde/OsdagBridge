@@ -28,6 +28,7 @@ from osdagbridge.core.bridge_types.plate_girder.ui_fields_additional_input impor
     STEEL_DESIGN_DETAILS_SCHEMA,
 )
 from osdagbridge.core.utils.common import (
+    KEY_MP_GD_SEGMENT_TABLE,
     KEY_SD_GRADE_OF_MATERIAL,
     KEY_SD_SECTION_TYPE,
     KEY_SD_SECTION_DESIGNATION,
@@ -650,8 +651,9 @@ class SteelDesignDetailsTab(QWidget):
             except:
                 pass
                 
-            # Selected girder's member id, so the preview label and data follow the girder combo.
-            member_id = f"G{self._girder_index + 1}M1"
+            # First member of the selected girder, from its segment table (falls back to M1 when absent).
+            seg_table = output_dict.get(f"{KEY_MP_GD_SEGMENT_TABLE}.G{self._girder_index + 1}") or []
+            member_id = (seg_table[0].get("id") if seg_table else None) or f"G{self._girder_index + 1}M1"
             segments = [{"id": member_id, "start": 0.0, "end": length_m, "length": length_m}]
 
             # Drive the CAD from the same normalized values shown in the table so
