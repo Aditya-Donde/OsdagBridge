@@ -169,9 +169,9 @@ def preamble(project_name, job_number, report_date, report_version='Rev 0'):
     format=plain
 }
 \usepackage{subcaption}
-\usepackage{multirow}
 \usepackage{colortbl}
 \usepackage{longtable}
+\usepackage[longtable]{multirow}
 \setlength{\LTleft}{\fill}
 \setlength{\LTright}{\fill}
 \usepackage{titlesec}
