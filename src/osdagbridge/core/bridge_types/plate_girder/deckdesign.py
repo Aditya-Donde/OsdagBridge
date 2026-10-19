@@ -642,6 +642,9 @@ def design_deck_slab(input_dict: dict, fck: float, fctm: float, fy: float, Es: f
     # IRC 112:2020 Cl.16.6.1: secondary reinforcement ≥ 20 % of main transverse.
     As_req_long = max(0.20 * As_bot, _min_steel_mm2(fctm, fy, d_bot_mm))
     dia_long, spc_long, As_long = _pick_rebar(As_req_long, allowed_dias)
+    # Longitudinal bars are placed inside the transverse bars on each face.
+    d_long_bot_mm = deck_t_mm - cover_bot_mm - dia_bot - dia_long / 2.0
+    d_long_top_mm = deck_t_mm - cover_top_mm - dia_top - dia_long / 2.0
 
     # ── 10. deck overhang design ─────────────────────────────────────────────
     if overhang_m > 0.01:
@@ -1038,6 +1041,13 @@ def design_deck_slab(input_dict: dict, fck: float, fctm: float, fy: float, Es: f
         "rebar_long_spacing"     : f"{spc_long:.0f}",
         "rebar_long_cover"       : f"{cover_bot_mm:.0f}",
         "rebar_long_area"        : f"{As_long:.0f}",
+        "rebar_bottom_area_req"  : f"{As_req_bot:.0f}",
+        "rebar_bottom_d"         : f"{d_bot_mm:.1f}",
+        "rebar_top_area_req"     : f"{As_req_top:.0f}",
+        "rebar_top_d"            : f"{d_top_mm:.1f}",
+        "rebar_long_area_req"    : f"{As_req_long:.0f}",
+        "rebar_long_bot_d"       : f"{d_long_bot_mm:.1f}",
+        "rebar_long_top_d"        : f"{d_long_top_mm:.1f}",
         # ── SLS stress demand / limit (interior) ────────────────────────────
         # Bottom & top fibre share one material limit (0.48 fck / 0.80 fyk).
         KEY_DD_STRESS_CONC_BOTTOM    : round(sc_bot["sigma_c"], 3),
@@ -1072,6 +1082,8 @@ def design_deck_slab(input_dict: dict, fck: float, fctm: float, fy: float, Es: f
             "rebar_overhang_spacing" : f"{spc_oh:.0f}",
             "rebar_overhang_cover"   : f"{cover_top_mm:.0f}",
             "rebar_overhang_area"    : f"{As_oh:.0f}",
+            "rebar_overhang_area_req": f"{As_req_oh:.0f}",
+            "rebar_overhang_d"       : f"{d_oh_mm:.1f}",
             # ── overhang utilization ratios ─────────────────────────────────
             "ur_oh_uls"              : round(M_ULS_oh / Mu_oh if Mu_oh > 0 else 9.999, 3),
             "ur_oh_sls_c"            : round(sc_oh["sigma_c"] / sc_oh["sc_lim"], 3),
