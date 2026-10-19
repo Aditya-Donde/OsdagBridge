@@ -246,3 +246,119 @@ QWidget#logs_dock QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
 QWidget#logs_dock QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
     background: none; /* Hides the area between handle and arrows */
 }
+
+/* ==============================================
+   Report Options Dialog
+   ============================================== */
+QDialog#report_options_dialog {
+    background-color: #ffffff;
+    border: 1px solid #90AF13;
+}
+QWidget#contentWidget {
+    background-color: #ffffff;
+}
+
+QDialog#report_options_dialog QLabel#headline {
+    font-size: 15px;
+    font-weight: 700;
+    color: #2d2d2d;
+}
+QDialog#report_options_dialog QLabel {
+    color: #1f1f1f;
+}
+
+QDialog#report_options_dialog QGroupBox {
+    font-weight: 600;
+    font-size: 12px;
+    color: #64850c;
+    border: 1px solid #d0d0d0;
+    border-radius: 6px;
+    margin-top: 14px;
+    padding: 14px 10px 10px 10px;
+}
+QDialog#report_options_dialog QGroupBox::title {
+    subcontrol-origin: margin;
+    subcontrol-position: top left;
+    padding: 2px 8px;
+    color: #64850c;
+}
+
+QDialog#report_options_dialog QLineEdit,
+QDialog#report_options_dialog QTextEdit {
+    padding: 4px 8px;
+    border: 1px solid #070707;
+    border-radius: 6px;
+    background-color: #ffffff;
+    color: #000000;
+    font-weight: normal;
+}
+
+QDialog#report_options_dialog QPushButton#primary {
+    background-color: #ffffff;
+    color: #1f1f1f;
+    border: 1px solid #90AF13;
+    border-radius: 6px;
+    padding: 6px 14px;
+    font-weight: 600;
+}
+QDialog#report_options_dialog QPushButton#primary:hover {
+    background-color: #90AF13;
+    color: #ffffff;
+}
+QDialog#report_options_dialog QPushButton#primary:pressed {
+    background-color: #64850c;
+    color: #ffffff;
+}
+
+QDialog#report_options_dialog QPushButton#ghost {
+    background-color: #ffffff;
+    color: #1d1d1d;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    padding: 6px 14px;
+    font-weight: 600;
+}
+QDialog#report_options_dialog QPushButton#ghost:hover {
+    background-color: #f0f0f0;
+}
+QDialog#report_options_dialog QPushButton#ghost:pressed {
+    background-color: #d9d9d9;
+}
+
+/* Report Sections Selection Tree */
+QDialog#report_options_dialog QTreeWidget {
+    border: 1px solid #d0d0d0;
+    border-radius: 6px;
+    background-color: #ffffff;
+    outline: 0;
+}
+QDialog#report_options_dialog QTreeWidget::item {
+    padding: 4px 0px;
+    color: #1f1f1f;
+}
+QDialog#report_options_dialog QTreeWidget::item:disabled {
+    color: #8a8a8a;
+}
+QDialog#report_options_dialog QTreeWidget::item:selected,
+QDialog#report_options_dialog QTreeWidget::item:hover {
+    background: transparent;
+    color: #1f1f1f;
+}
+QDialog#report_options_dialog QTreeWidget::indicator {
+    width: 16px;
+    height: 16px;
+    border: 1px solid #333333;
+    border-radius: 3px;
+    background-color: #ffffff;
+}
+QDialog#report_options_dialog QTreeWidget::indicator:hover {
+    border: 1px solid #555555;
+}
+QDialog#report_options_dialog QTreeWidget::indicator:checked {
+    image: url(:/vectors/checked.svg);
+}
+QDialog#report_options_dialog QTreeWidget::indicator:disabled {
+    border: 1px solid #b0b0b0;
+    background-color: #f0f0f0;
+}
+

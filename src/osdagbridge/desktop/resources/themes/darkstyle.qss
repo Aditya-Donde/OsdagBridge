@@ -30,3 +30,180 @@ QToolTip {
     border-radius: 0px;
     qproperty-alignment: AlignVCenter;
 }
+
+/* ==============================================
+   Custom Title Bar (Dark Theme)
+   ============================================== */
+QWidget#CustomTitleBar {
+    background-color: #202020;
+}
+QLabel#TitleLabel {
+    color: #FFFFFF;
+    padding: 0px;
+    background: transparent;
+}
+QLabel#LogoLabel {
+    background: transparent;
+}
+
+QToolButton#MinimizeButton {
+    background-color: transparent;
+    color: #FFFFFF;
+    border: 0px;
+    border-radius: 0px;
+    font-size: 16px;
+}
+QToolButton#MinimizeButton:hover {
+    background-color: #3a3a3a;
+}
+QToolButton#MinimizeButton:pressed {
+    background-color: #555555;
+}
+
+QToolButton#MaxRestoreButton {
+    background-color: transparent;
+    color: #FFFFFF;
+    border: 0px;
+    border-radius: 0px;
+    font-size: 16px;
+}
+QToolButton#MaxRestoreButton:hover {
+    background-color: #3a3a3a;
+}
+QToolButton#MaxRestoreButton:pressed {
+    background-color: #555555;
+}
+
+QToolButton#CloseButton {
+    background-color: transparent;
+    color: #FFFFFF;
+    border: 0px;
+    border-radius: 0px;
+    font-size: 16px;
+}
+QToolButton#CloseButton:hover {
+    background-color: #e81123;
+    color: #ffffff;
+}
+QToolButton#CloseButton:pressed {
+    background-color: #b8101e;
+    color: #ffffff;
+}
+QWidget#BottomLine {
+    background-color: #333333;
+}
+
+/* ==============================================
+   Report Options Dialog (Dark Theme)
+   ============================================== */
+QDialog#report_options_dialog {
+    background-color: #202020;
+    border: 1px solid #90AF13;
+}
+QWidget#contentWidget {
+    background-color: #202020;
+}
+
+QDialog#report_options_dialog QLabel#headline {
+    font-size: 15px;
+    font-weight: 700;
+    color: #FFFFFF;
+}
+QDialog#report_options_dialog QLabel {
+    color: #E0E0E0;
+}
+
+QDialog#report_options_dialog QGroupBox {
+    font-weight: 600;
+    font-size: 12px;
+    color: #90AF13;
+    border: 1px solid #444444;
+    border-radius: 6px;
+    margin-top: 14px;
+    padding: 14px 10px 10px 10px;
+}
+QDialog#report_options_dialog QGroupBox::title {
+    subcontrol-origin: margin;
+    subcontrol-position: top left;
+    padding: 2px 8px;
+    color: #90AF13;
+}
+
+QDialog#report_options_dialog QLineEdit,
+QDialog#report_options_dialog QTextEdit {
+    padding: 4px 8px;
+    border: 1px solid #555555;
+    border-radius: 6px;
+    background-color: #2b2b2b;
+    color: #FFFFFF;
+    font-weight: normal;
+}
+
+QDialog#report_options_dialog QPushButton#primary {
+    background-color: #2b2b2b;
+    color: #FFFFFF;
+    border: 1px solid #90AF13;
+    border-radius: 6px;
+    padding: 6px 14px;
+    font-weight: 600;
+}
+QDialog#report_options_dialog QPushButton#primary:hover {
+    background-color: #90AF13;
+    color: #FFFFFF;
+}
+QDialog#report_options_dialog QPushButton#primary:pressed {
+    background-color: #64850c;
+    color: #FFFFFF;
+}
+
+QDialog#report_options_dialog QPushButton#ghost {
+    background-color: #2b2b2b;
+    color: #E0E0E0;
+    border: 1px solid #555555;
+    border-radius: 6px;
+    padding: 6px 14px;
+    font-weight: 600;
+}
+QDialog#report_options_dialog QPushButton#ghost:hover {
+    background-color: #3a3a3a;
+}
+QDialog#report_options_dialog QPushButton#ghost:pressed {
+    background-color: #4a4a4a;
+}
+
+/* Report Sections Selection Tree */
+QDialog#report_options_dialog QTreeWidget {
+    border: 1px solid #444444;
+    border-radius: 6px;
+    background-color: #2b2b2b;
+    outline: 0;
+}
+QDialog#report_options_dialog QTreeWidget::item {
+    padding: 4px 0px;
+    color: #FFFFFF;
+}
+QDialog#report_options_dialog QTreeWidget::item:disabled {
+    color: #777777;
+}
+QDialog#report_options_dialog QTreeWidget::item:selected,
+QDialog#report_options_dialog QTreeWidget::item:hover {
+    background: transparent;
+    color: #FFFFFF;
+}
+QDialog#report_options_dialog QTreeWidget::indicator {
+    width: 16px;
+    height: 16px;
+    border: 1px solid #888888;
+    border-radius: 3px;
+    background-color: #2b2b2b;
+}
+QDialog#report_options_dialog QTreeWidget::indicator:hover {
+    border: 1px solid #aaaaaa;
+}
+QDialog#report_options_dialog QTreeWidget::indicator:checked {
+    image: url(:/vectors/checked.svg);
+}
+QDialog#report_options_dialog QTreeWidget::indicator:disabled {
+    border: 1px solid #555555;
+    background-color: #383838;
+}
