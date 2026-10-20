@@ -675,10 +675,11 @@ class CustomWindow(QWidget):
         
         if trigger == "Design":
 
+            # Sync Project Location values first: the compute functions below
+            # read refresh-synced keys (seismic zone, wind speed, temperatures).
+            self._sync_refresh_entries_to_input_dict()
             # Update Computed Values in input_dict before Design
             self._sync_compute_results_to_input_dict()
-            # read a refresh-synced key (KEY_WL_BASIC_WIND_SPEED) as their input.
-            self._sync_refresh_entries_to_input_dict()
 
             import sys
             import traceback
