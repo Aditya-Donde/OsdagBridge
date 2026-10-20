@@ -39,6 +39,9 @@ from osdagbridge.core.utils.codes.irc6_2017 import IRC6_2017
 from osdagbridge.core.utils.common import (
     KEY_STRUCTURE_TYPE,
     KEY_PROJECT_LOCATION,
+    KEY_WL_BASIC_WIND_SPEED,
+    KEY_WL_AVG_EXPOSED_HEIGHT,
+    KEY_WL_TERRAIN_TYPE,
     KEY_SPAN,
     KEY_CARRIAGEWAY_WIDTH,
     KEY_INCLUDE_MEDIAN,
@@ -55,6 +58,7 @@ from osdagbridge.core.utils.common import (
     KEY_MATERIAL_GIRDER_E, KEY_MATERIAL_GIRDER_G, KEY_MATERIAL_GIRDER_POISSON,
     KEY_MATERIAL_GIRDER_FY, KEY_MATERIAL_GIRDER_FU, KEY_MATERIAL_GIRDER_THERMAL,
     KEY_MATERIAL_DECK_FCK, KEY_MATERIAL_DECK_FCTM, KEY_MATERIAL_DECK_ECM,
+    KEY_MATERIAL_DECK_MODULAR,
     DEFAULT_CRASH_BARRIER_WIDTH,
     DEFAULT_RAILING_WIDTH,
     DEFAULT_GIRDER_SPACING,
@@ -1451,13 +1455,13 @@ class PlateGirderBridge:
         inp = self.input_dict
 
         # ── Wind speed / terrain ─────────────────────────────────────────
-        basic_wind_speed = float(ai.get("basic_wind_speed") or 33.0)
+        basic_wind_speed = float(inp.get(KEY_WL_BASIC_WIND_SPEED) or 33.0)
         if basic_wind_speed == 0.0:
             bridge_logger.info("Wind load absent (speed=0); skipping.")
             return
 
-        height_for_pz = float(ai.get("avg_exposed_height") or 10.0)
-        terrain_raw   = str(ai.get("terrain_type") or "Plain Terrain")
+        height_for_pz = float(inp.get(KEY_WL_AVG_EXPOSED_HEIGHT) or 10.0)
+        terrain_raw   = str(inp.get(KEY_WL_TERRAIN_TYPE) or "Plain Terrain")
         terrain       = "plain" if "plain" in terrain_raw.lower() else "obstructed"
 
         # ── Exposed height components ────────────────────────────────────
@@ -2635,6 +2639,7 @@ class PlateGirderBridge:
             self._load_effects_cache        = {}
             self._lc_summary       = {}
             self._reaction_summary= {}
+            self.output_dict["load_effects_cache"] = {}
             return
         edge_dist = self.get_edge_dist()
         rh = PlateGirderAnalysisResults(
@@ -2646,6 +2651,10 @@ class PlateGirderBridge:
         ch4 = build_forces_summary(rh, self._load_effects_cache)
         self._lc_summary       = ch4["load_cases"]
         self._reaction_summary= ch4["reactions"]
+
+        # Persist the envelope cache so the strict output_dict-only resolvers
+        # (bending/shear envelope + by-load-case results tables) can read it.
+        self.output_dict["load_effects_cache"] = self._load_effects_cache
 
     def get_3d_cad_parameters(self) -> BridgeParametersDTO:
         """
@@ -3702,6 +3711,12 @@ class PlateGirderBridge:
         out[KEY_SD_DEFL_TOTAL]       = round(dr["delta_total_mm"],      3)   # mm — actual total-load deflection
         out[KEY_SD_DEFL_ALLOW_LIVE]  = round(dr["defl_limit_live_mm"],  2)   # mm — allowable = L/800
         out[KEY_SD_DEFL_ALLOW_TOTAL] = round(dr["defl_limit_total_mm"], 2)   # mm — allowable = L/600
+
+        # ── Modular ratio — promote designer's short-term n = Es/Ecm to a flat key ──
+        # for the concrete material-properties table (IRC 22:2015 Cl.604.3).
+        _mod = (dr.get("capacity_details") or {}).get("modular_ratio") or {}
+        if _mod.get("m_short") is not None:
+            out[KEY_MATERIAL_DECK_MODULAR] = round(float(_mod["m_short"]), 2)
 
         # In store_design_results(), replace the stiffener section (── 5. Stiffener table ──) with:
 
