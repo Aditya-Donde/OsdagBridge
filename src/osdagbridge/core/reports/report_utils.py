@@ -6,6 +6,7 @@ matplotlib.use("Agg", force=True)
 import matplotlib.pyplot as plt
 
 from osdagbridge.core.utils.common import (
+    KEY_BOQ_END_DIAPHRAGM_WEIGHT_T,
     KEY_MP_GD_MEMBER_ID,
     KEY_MP_GD_SELECT_GIRDER,
     KEY_TS_NO_OF_GIRDERS,
@@ -552,11 +553,7 @@ class ReportChartGenerator:
             bracing = sum(self._number(quantities.get(key)) for key in (
                 "bracing_top_wt_total", "bracing_bot_wt_total", "bracing_diag_wt_total"
             ))
-            diaphragm = self._first_number(quantities, (
-                "end_diaphragm_wt_total", "end_diaphragms_wt_total",
-                "steel_end_diaphragm_wt_total", "steel_end_diaphragms_wt_total",
-                "diaphragm_wt_total", "diaphragms_wt_total",
-            ))
+            diaphragm = self._number(quantities.get(KEY_BOQ_END_DIAPHRAGM_WEIGHT_T))
             return {
                 "steel": self._save_bar_chart(
                     "material_steel_quantities.pdf",

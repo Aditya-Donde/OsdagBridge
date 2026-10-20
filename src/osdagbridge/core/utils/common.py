@@ -59,6 +59,7 @@ KEY_DESIGN_MODE = "geometry.design_mode"
 KEY_GIRDER = "material.girder"
 KEY_CROSS_BRACING = "material.cross_bracing"
 KEY_END_DIAPHRAGM = "material.end_diaphragm"
+KEY_BOQ_END_DIAPHRAGM_WEIGHT_T = "end_diaphragm_wt_total"
 KEY_DECK = "Deck"
 KEY_DECK_CONCRETE_GRADE_BASIC = "material.deck"
 

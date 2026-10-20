@@ -7,7 +7,18 @@ import math
 from typing import Any
 
 from osdagbridge.core.bridge_components.super_structure.crash_barrier.properties import RCC_DENSITY
+from osdagbridge.core.bridge_types.plate_girder.crossbracingforces import brace_geometry
 from osdagbridge.core.utils.common import (
+    KEY_BOQ_END_DIAPHRAGM_WEIGHT_T,
+    KEY_MP_ED_BRACING_TYPE,
+    KEY_MP_ED_BOTTOM_CHORD,
+    KEY_MP_ED_TOP_CHORD,
+    KEY_MP_ED_TYPE,
+    KEY_MP_GIRDER_WEB_DEPTH,
+    KEY_TD_ED_PROP_A,
+    KEY_TD_ED_TOP_CHORD_PROP_A,
+    KEY_TD_ED_BOTTOM_CHORD_PROP_A,
+    KEY_TS_GIRDER_SPACING,
     KEY_CB_AREA,
     KEY_CB_DENSITY,
     KEY_CB_LOAD,
@@ -535,6 +546,30 @@ def calculate_material_quantities(inputs: dict, outputs: dict) -> dict:
 
         # 5. Cross bracing: top chord, bottom chord and diagonals
         quantities.update(calculate_bracing_quantities(outputs, steel_density_t_per_m3))
+
+        # End diaphragms: To get in tonnage.
+        ed_volumes = []
+        for type_key in (k for k in outputs if k.rpartition(".")[0] == KEY_MP_ED_TYPE):
+            pair_id = type_key.rsplit(".", 1)[-1]
+            spacing = _num(inputs.get(KEY_TS_GIRDER_SPACING))
+            if outputs[type_key] == "Cross Bracing":
+                geom = brace_geometry(_girder_num(inputs, KEY_MP_GIRDER_DEPTH, 0), spacing,
+                                      outputs.get(f"{KEY_MP_ED_BRACING_TYPE}.{pair_id}"),
+                                      h_val=_girder_num(inputs, KEY_MP_GIRDER_WEB_DEPTH, 0))
+                members = (
+                    (KEY_TD_ED_PROP_A, geom["L_d"], 4, True),
+                    (KEY_TD_ED_TOP_CHORD_PROP_A, spacing, 2, _truth(outputs.get(f"{KEY_MP_ED_TOP_CHORD}.{pair_id}"))),
+                    (KEY_TD_ED_BOTTOM_CHORD_PROP_A, spacing, 2, _truth(outputs.get(f"{KEY_MP_ED_BOTTOM_CHORD}.{pair_id}"))),
+                )
+            else:
+                members = ((KEY_TD_ED_PROP_A, spacing, 2, True),)
+            for area_key, length, count, enabled in members:
+                if enabled:
+                    area = _num(outputs.get(f"{area_key}.{pair_id}"))
+                    ed_volumes.append(None if area is None or length is None else area * length * count / 10000.0)
+        quantities[KEY_BOQ_END_DIAPHRAGM_WEIGHT_T] = (
+            _bracing_member_quantities("end_diaphragm", 0, 0, 0, sum(ed_volumes), steel_density_t_per_m3)[KEY_BOQ_END_DIAPHRAGM_WEIGHT_T]
+            if ed_volumes and None not in ed_volumes else "N.A.")
 
         # 6. Crash Barrier (Cu.m) and Weight (t)
         # Density is entered in kN/m³ (RCC default 25); convert to T/m³ for the take-off.
