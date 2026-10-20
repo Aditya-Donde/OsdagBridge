@@ -713,7 +713,7 @@ def resolve_seismic_load_parameters(output_dict: dict) -> dict | None:
     response_red      = od.get(KEY_SL_RESPONSE_REDUCTION)
 
     zone_factor       = od.get(KEY_SL_ZONE_FACTOR)
-    spectral_coeff    = od.get(KEY_SL_SPECTRAL_COEFF)
+    spectral_coeff    = od.get(KEY_SL_SA_G)
     horizontal_coeff  = od.get(KEY_SL_HORIZONTAL_COEFF)
     vertical_coeff    = od.get(KEY_SL_VERTICAL_COEFF)
 

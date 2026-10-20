@@ -3120,6 +3120,7 @@ class AdditionalInputs(QDialog):
         return {
             KEY_SL_ZONE_FACTOR:       str(result.get("Z", "")),
             KEY_SL_SPECTRAL_COEFF:    str(result.get("Sa_g_adjusted", "")),
+            KEY_SL_SA_G:              str(result.get("Sa_g", "")),
             KEY_SL_HORIZONTAL_COEFF:  str(Ah),
             KEY_SL_VERTICAL_COEFF:    str(Av),
         }

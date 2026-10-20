@@ -819,6 +819,7 @@ KEY_SL_LIVE_LOAD_VALUE          = "loading.seismic_load.live_load.value"
 
 KEY_SL_ZONE_FACTOR              = "loading.seismic_load.computed.zone_factor"
 KEY_SL_SPECTRAL_COEFF           = "loading.seismic_load.computed.spectral_coeff"
+KEY_SL_SA_G                     = "loading.seismic_load.computed.sa_g"
 KEY_SL_HORIZONTAL_COEFF         = "loading.seismic_load.computed.horizontal_coeff"
 KEY_SL_VERTICAL_COEFF           = "loading.seismic_load.computed.vertical_coeff"
 KEY_SL_FORCE_LONGITUDINAL       = "loading.seismic_load.computed.force_longitudinal"
