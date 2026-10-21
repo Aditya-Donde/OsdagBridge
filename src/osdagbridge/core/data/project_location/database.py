@@ -22,7 +22,7 @@ class Database:
         self.connection = sqlite3.connect(self.db_name)
         self.connection.execute("PRAGMA foreign_keys = ON")
         self.cursor = self.connection.cursor()
-        if db_missing or not self._table_exists("stations"):
+        if db_missing or not self._is_populated():
             schema_file = os.path.join(os.path.dirname(__file__), 'schema.sql')
             if os.path.exists(schema_file):
                 with open(schema_file, 'r', encoding='utf-8') as f:
@@ -64,6 +64,19 @@ class Database:
             (name,)
         )
         return self.cursor.fetchone() is not None
+
+    def _is_populated(self) -> bool:
+        """Check if all required tables exist and are populated with data."""
+        try:
+            for tbl in ("stations", "temperature_data", "zone_data", "windspeed_data"):
+                if not self._table_exists(tbl):
+                    return False
+                self.cursor.execute(f"SELECT 1 FROM {tbl} LIMIT 1")
+                if not self.cursor.fetchone():
+                    return False
+            return True
+        except Exception:
+            return False
 
     def _bootstrap_stations_if_missing(self):
         """
