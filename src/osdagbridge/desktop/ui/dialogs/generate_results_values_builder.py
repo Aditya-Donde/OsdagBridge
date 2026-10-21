@@ -919,8 +919,8 @@ def resolve_temperature_load_parameters(output_dict: dict) -> dict | None:
         "columns": [
             "Highest Maximum Air Temperature (°C)",
             "Lowest Minimum Air Temperature (°C)",
-            "Coefficient of Thermal Expansion for Steel (1/°C)",
-            "Coefficient of Thermal Expansion for RCC (1/°C)",
+            "Coefficient of Thermal Expansion for Steel (×10⁻⁶/°C)",
+            "Coefficient of Thermal Expansion for RCC (×10⁻⁶/°C)",
             "Effective Bridge Temperature - Minimum (°C)",
             "Effective Bridge Temperature - Maximum (°C)",
             "Temperature for Design - Rise (°C)",
@@ -929,8 +929,8 @@ def resolve_temperature_load_parameters(output_dict: dict) -> dict | None:
         "rows": [[
             _num(highest_max_temp)    if _has(highest_max_temp)    else EMPTY,
             _num(lowest_min_temp)     if _has(lowest_min_temp)     else EMPTY,
-            _num(thermal_coeff_steel, decimals=8) if _has(thermal_coeff_steel) else EMPTY,
-            _num(thermal_coeff_rcc,   decimals=8) if _has(thermal_coeff_rcc)   else EMPTY,
+            _num(thermal_coeff_steel) if _has(thermal_coeff_steel) else EMPTY,
+            _num(thermal_coeff_rcc)   if _has(thermal_coeff_rcc)   else EMPTY,
             _num(bridge_temp_min)     if _has(bridge_temp_min)     else EMPTY,
             _num(bridge_temp_max)     if _has(bridge_temp_max)     else EMPTY,
             _num(temp_rise)           if _has(temp_rise)           else EMPTY,
