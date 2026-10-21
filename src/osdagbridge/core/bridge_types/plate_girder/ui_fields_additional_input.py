@@ -941,8 +941,8 @@ _TEMPERATURE_LOAD_TAB_SCHEMA = {
                         "on_change_compute": {"function": "_compute_temperature_values"}
                     }]
                 },
-                {"fields": [{"id": KEY_TL_THERMAL_COEFF_STEEL, "label": "Coefficient of Thermal Expansion for Steel (1/°C)",       "type": TYPE_TEXTBOX, "read_only": True, "placeholder": "e.g. 11.7e-6",        }]},
-                {"fields": [{"id": KEY_TL_THERMAL_COEFF_RCC,   "label": "Coefficient of Thermal Expansion for RCC (1/°C)",         "type": TYPE_TEXTBOX, "read_only": True, "placeholder": "e.g. 11.7e-6",        }]},
+                {"fields": [{"id": KEY_TL_THERMAL_COEFF_STEEL, "label": "Coefficient of Thermal Expansion for Steel (&#xD7;10<sup>-6</sup>/°C)", "type": TYPE_TEXTBOX, "read_only": True, "placeholder": "e.g. 11.7",        }]},
+                {"fields": [{"id": KEY_TL_THERMAL_COEFF_RCC,   "label": "Coefficient of Thermal Expansion for RCC (&#xD7;10<sup>-6</sup>/°C)",   "type": TYPE_TEXTBOX, "read_only": True, "placeholder": "e.g. 11.7",        }]},
             ],
         },
 
@@ -3524,8 +3524,8 @@ GENERATE_RESULTS_DEFAULTS = {
                 "columns": [
                     "Highest Maximum Air Temperature (°C)",
                     "Lowest Minimum Air Temperature (°C)",
-                    "Coefficient of Thermal Expansion for Steel (1/°C)",
-                    "Coefficient of Thermal Expansion for RCC (1/°C)",
+                    "Coefficient of Thermal Expansion for Steel (×10⁻⁶/°C)",
+                    "Coefficient of Thermal Expansion for RCC (×10⁻⁶/°C)",
                     "Effective Bridge Temperature - Minimum (°C)",
                     "Effective Bridge Temperature - Maximum (°C)",
                     "Temperature for Design - Rise (°C)",
