@@ -310,8 +310,6 @@ class CAD3DWindow(QWidget):
         BARRIER_POST_COLOR = Quantity_Color(20/255, 20/255, 20/255, Quantity_TOC_RGB)
         SUPPORT_COLOR = Quantity_Color(20/255.0, 20/255.0, 20/255.0, Quantity_TOC_RGB)
 
-
-
         # HELPER 
         def display_and_register(shapes, key, label, color, transparency=None, line_width=None,
                                  selectable=True, per_ais_labels=None):

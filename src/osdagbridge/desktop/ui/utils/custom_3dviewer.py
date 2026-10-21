@@ -112,8 +112,9 @@ class AxisTriadOverlay(QWidget):
         """Show the widget and begin polling the OCC view orientation."""
         self._started = True
         self._timer.start()
-        self.show()
-        self.raise_()
+        if self._viewer.isVisible():
+            self.show()
+            self.raise_()
 
     def stop(self):
         """Hide the widget and stop the poll timer."""
@@ -356,6 +357,9 @@ class CustomViewer3d(qtViewer3d):
                 QTimer.singleShot(0, lambda: (at.show(), at.raise_()))
 
     def _deferred_show_navcube(self):
+        if not self.isVisible():
+            self.navcube.hide()
+            return
         self._resize_navcube()
         self._position_navcube()
         self.navcube.show()
@@ -370,6 +374,8 @@ class CustomViewer3d(qtViewer3d):
 
     def _position_navcube(self):
         if not hasattr(self, "navcube") or not self.navcube:
+            return
+        if not self.isVisible():
             return
 
         host = self.navcube.parentWidget()
@@ -399,6 +405,8 @@ class CustomViewer3d(qtViewer3d):
         translated to its parent widget's coordinate system (same logic as
         _position_navcube so it works for any host layout)."""
         if not hasattr(self, "_axis_triad") or not self._axis_triad:
+            return
+        if not self.isVisible():
             return
         sz = self._axis_triad._SIZE
         mg = self._axis_triad._MARGIN
@@ -721,6 +729,8 @@ class CustomViewer3d(qtViewer3d):
             self._axis_triad.start()
 
     def _show_navcube_when_ready(self):
+        if not self.isVisible():
+            return
         self._resize_navcube()
         self._position_navcube()
         self._position_axis_triad()
