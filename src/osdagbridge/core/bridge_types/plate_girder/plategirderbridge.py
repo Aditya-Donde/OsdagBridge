@@ -3692,9 +3692,7 @@ class PlateGirderBridge:
 
         # ── Modular ratio — promote designer's short-term n = Es/Ecm to a flat key ──
         # for the concrete material-properties table (IRC 22:2015 Cl.604.3).
-        _mod = (dr.get("capacity_details") or {}).get("modular_ratio") or {}
-        if _mod.get("m_short") is not None:
-            out[KEY_MATERIAL_DECK_MODULAR] = round(float(_mod["m_short"]), 2)
+        out[KEY_MATERIAL_DECK_MODULAR] = round(float(dr["capacity_details"]["modular_ratio"]["m_short"]), 2)
 
         # In store_design_results(), replace the stiffener section (── 5. Stiffener table ──) with:
 
