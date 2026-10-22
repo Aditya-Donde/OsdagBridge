@@ -651,10 +651,10 @@ class SteelDesignDetailsTab(QWidget):
             except:
                 pass
                 
-            # First member of the selected girder, from its segment table (falls back to M1 when absent).
+            # First member of the selected girder, from its segment table; without a table there is nothing to draw.
             seg_table = output_dict.get(f"{KEY_MP_GD_SEGMENT_TABLE}.G{self._girder_index + 1}") or []
-            member_id = (seg_table[0].get("id") if seg_table else None) or f"G{self._girder_index + 1}M1"
-            segments = [{"id": member_id, "start": 0.0, "end": length_m, "length": length_m}]
+            member_id = seg_table[0].get("id") if seg_table else None
+            segments = [{"id": member_id, "start": 0.0, "end": length_m, "length": length_m}] if member_id else []
 
             # Drive the CAD from the same normalized values shown in the table so
             # the preview always matches the displayed stiffener details. The CAD
