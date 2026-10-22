@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import re
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
@@ -44,6 +45,19 @@ class ChannelSection:
     r2: float  # toe radius (mm)
 
 
+@dataclass
+class BeamSection:
+    designation: str
+    d: float   # depth (mm)
+    b: float   # flange width (mm)
+    tw: float  # web thickness (mm)
+    tf: float  # flange thickness (mm)
+    r1: float  # root radius (mm)
+    r2: float  # toe radius (mm)
+    b_bot: float = 0.0   # bottom flange width (mm, 0 = same as b)
+    tf_bot: float = 0.0  # bottom flange thickness (mm, 0 = same as tf)
+
+
 class SectionCatalog:
     """Lightweight access to Osdag section database."""
 
@@ -51,6 +65,7 @@ class SectionCatalog:
         self.db_path = db_path
         self._angles: Dict[str, AngleSection] = {}
         self._channels: Dict[str, ChannelSection] = {}
+        self._beams: Dict[str, BeamSection] = {}
         self._load()
 
     def _load(self) -> None:
@@ -83,6 +98,22 @@ class SectionCatalog:
                 r2=float(r2),
             )
 
+        # Beams
+        try:
+            cur.execute("SELECT Designation, D, B, tw, T, R1, R2 FROM Beams")
+            for des, d, b, tw, tf, r1, r2 in cur.fetchall():
+                self._beams[des.strip()] = BeamSection(
+                    designation=des.strip(),
+                    d=float(d or 0.0),
+                    b=float(b or 0.0),
+                    tw=float(tw or 0.0),
+                    tf=float(tf or 0.0),
+                    r1=float(r1 or 0.0),
+                    r2=float(r2 or 0.0),
+                )
+        except Exception:
+            pass
+
         con.close()
 
     def list_angles(self) -> List[str]:
@@ -91,11 +122,28 @@ class SectionCatalog:
     def list_channels(self) -> List[str]:
         return sorted(self._channels.keys())
 
+    def list_beams(self) -> List[str]:
+        return sorted(self._beams.keys())
+
     def get_angle(self, designation: str) -> Optional[AngleSection]:
         return self._angles.get(designation.strip())
 
     def get_channel(self, designation: str) -> Optional[ChannelSection]:
         return self._channels.get(designation.strip())
+
+    def get_beam(self, designation: str) -> Optional[BeamSection]:
+        d = str(designation).strip()
+        if d in self._beams:
+            return self._beams[d]
+        d_lower = d.lower()
+        for k, v in self._beams.items():
+            if k.lower() == d_lower:
+                return v
+        d_norm = d_lower.replace("is", "").replace(" ", "")
+        for k, v in self._beams.items():
+            if k.lower().replace("is", "").replace(" ", "") == d_norm:
+                return v
+        return None
 
 
 class SectionPreviewWidget(QWidget):
@@ -114,7 +162,7 @@ class SectionPreviewWidget(QWidget):
 
     def set_section(self, section_type: str, designation: str, show_double_total: bool = True) -> None:
         """
-        section_type: one of [angle, double_angle_long, double_angle_short, channel, double_channel]
+        section_type: one of [angle, double_angle_long, double_angle_short, channel, double_channel, beam]
         designation: designation string present in the DB (for doubles, pass base designation without the leading 2-)
         show_double_total: for double-angle/channel, whether to show total envelope width/height (default True).
         """
@@ -128,6 +176,7 @@ class SectionPreviewWidget(QWidget):
             "double_angle_short",
             "channel",
             "double_channel",
+            "beam",
         )
         self.update()
 
@@ -160,6 +209,16 @@ class SectionPreviewWidget(QWidget):
             if section_type == "double_channel":
                 dims["is_double"] = True
             return dims
+        if section_type == "beam":
+            bm = self._catalog.get_beam(designation)
+            if not bm:
+                return None
+            return {
+                "kind": "beam", "b": bm.b, "d": bm.d, "tw": bm.tw, "tf": bm.tf,
+                "r1": bm.r1, "r2": bm.r2,
+                "b_bot": bm.b_bot if bm.b_bot > 0 else bm.b,
+                "tf_bot": bm.tf_bot if bm.tf_bot > 0 else bm.tf,
+            }
         return None
 
     # ---- Geometry builders -------------------------------------------------
@@ -194,6 +253,12 @@ class SectionPreviewWidget(QWidget):
                 p1 = self._build_channel_path(ch, QPointF(0, 0))
                 p2 = self._build_channel_path(ch, QPointF(0, 0), mirror=True)
                 return [p1, p2]
+
+        if section_type == "beam":
+            bm = self._catalog.get_beam(designation)
+            if not bm:
+                return []
+            return [self._build_beam_path(bm, QPointF(0, 0))]
 
         return []
 
@@ -310,6 +375,53 @@ class SectionPreviewWidget(QWidget):
         path.closeSubpath()
         return path
 
+    def _build_beam_path(self, bm: BeamSection, origin: QPointF) -> QPainterPath:
+        # d = depth (vertical), b = flange width (horizontal)
+        # tw = web thickness, tf = flange thickness, r1 = root radius
+        d, b_top, tw, tf_top, r1 = bm.d, bm.b, bm.tw, bm.tf, max(bm.r1, 0.0)
+        b_bot = bm.b_bot if bm.b_bot > 0 else b_top
+        tf_bot = bm.tf_bot if bm.tf_bot > 0 else tf_top
+        x0, y0 = origin.x(), origin.y()
+
+        hw = tw / 2.0
+        hb_top = b_top / 2.0
+        hb_bot = b_bot / 2.0
+
+        r = min(r1, (d - tf_top - tf_bot) / 4, (min(b_top, b_bot) - tw) / 4) if (min(b_top, b_bot) > tw and d > (tf_top + tf_bot)) else 0.0
+        r = max(r, 0.0)
+
+        path = QPainterPath()
+        path.moveTo(x0 - hb_top, y0)
+        path.lineTo(x0 + hb_top, y0)
+        path.lineTo(x0 + hb_top, y0 + tf_top)
+        if r > 0:
+            path.lineTo(x0 + hw + r, y0 + tf_top)
+            path.quadTo(QPointF(x0 + hw, y0 + tf_top), QPointF(x0 + hw, y0 + tf_top + r))
+        else:
+            path.lineTo(x0 + hw, y0 + tf_top)
+        if r > 0:
+            path.lineTo(x0 + hw, y0 + d - tf_bot - r)
+            path.quadTo(QPointF(x0 + hw, y0 + d - tf_bot), QPointF(x0 + hw + r, y0 + d - tf_bot))
+        else:
+            path.lineTo(x0 + hw, y0 + d - tf_bot)
+        path.lineTo(x0 + hb_bot, y0 + d - tf_bot)
+        path.lineTo(x0 + hb_bot, y0 + d)
+        path.lineTo(x0 - hb_bot, y0 + d)
+        path.lineTo(x0 - hb_bot, y0 + d - tf_bot)
+        if r > 0:
+            path.lineTo(x0 - hw - r, y0 + d - tf_bot)
+            path.quadTo(QPointF(x0 - hw, y0 + d - tf_bot), QPointF(x0 - hw, y0 + d - tf_bot - r))
+        else:
+            path.lineTo(x0 - hw, y0 + d - tf_bot)
+        if r > 0:
+            path.lineTo(x0 - hw, y0 + tf_top + r)
+            path.quadTo(QPointF(x0 - hw, y0 + tf_top), QPointF(x0 - hw - r, y0 + tf_top))
+        else:
+            path.lineTo(x0 - hw, y0 + tf_top)
+        path.lineTo(x0 - hb_top, y0 + tf_top)
+        path.closeSubpath()
+        return path
+
     # ---- Painting ----------------------------------------------------------
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -374,6 +486,8 @@ class SectionPreviewWidget(QWidget):
             self._draw_angle_dimensions(painter, bbox, scale, info)
         elif info.get("kind") == "channel":
             self._draw_channel_dimensions(painter, bbox, scale, info)
+        elif info.get("kind") == "beam":
+            self._draw_beam_dimensions(painter, bbox, scale, info)
 
     def _fmt_val(self, val: float) -> str:
         """Format dimension value cleanly."""
@@ -467,6 +581,41 @@ class SectionPreviewWidget(QWidget):
                                       "t", self._fmt_val(tw), subscript="w", outer_arrows=True, label_pos="below")
 
         # tf dimension (flange thickness - vertical on the right side, label on right)
+        if tf > 0:
+            self._draw_dim_line_v(painter, scale, y_top, y_top + tf, x_right + max(8.0, offset * 0.8),
+                                  "t", self._fmt_val(tf), subscript="f", outer_arrows=True, label_right=True)
+
+    def _draw_beam_dimensions(self, painter: QPainter, bbox: QRectF, scale: float, info: dict) -> None:
+        x_left, x_right = bbox.left(), bbox.right()
+        y_top, y_bottom = bbox.top(), bbox.bottom()
+        tw = info.get("tw", 0.0)  # web thickness
+        tf = info.get("tf", 0.0)  # flange thickness
+        d = info.get("d", bbox.height())
+        b = info.get("b", bbox.width())
+
+        max_dim = max(bbox.width(), bbox.height())
+        offset = max(6.0, min(14.0, max_dim * 0.12))
+
+        # B dimension (horizontal at bottom - flange width)
+        self._draw_dim_line_h(painter, scale, x_left, x_right, y_bottom + offset,
+                              "B", self._fmt_val(b))
+
+        # D dimension (vertical on left - depth)
+        self._draw_dim_line_v(painter, scale, y_top, y_bottom, x_left - offset,
+                              "D", self._fmt_val(d))
+
+        # tw dimension (web thickness - horizontal at top center)
+        if tw > 0:
+            self._draw_dim_line_h(painter, scale, -tw / 2.0, tw / 2.0, y_top - offset,
+                                  "t", self._fmt_val(tw), subscript="w", outer_arrows=True, label_pos="below")
+            helper_pen = QPen(QColor(CAD_DIMENSION), 1.2 / max(scale, 1e-3))
+            painter.setPen(helper_pen)
+            dash_pen = QPen(QColor(CAD_DIMENSION), 0.9 / max(scale, 1e-3), Qt.DashLine)
+            painter.setPen(dash_pen)
+            painter.drawLine(QPointF(-tw / 2.0, y_top + tf), QPointF(-tw / 2.0, y_top - offset))
+            painter.drawLine(QPointF(tw / 2.0, y_top + tf), QPointF(tw / 2.0, y_top - offset))
+
+        # tf dimension (flange thickness - vertical on the right side)
         if tf > 0:
             self._draw_dim_line_v(painter, scale, y_top, y_top + tf, x_right + max(8.0, offset * 0.8),
                                   "t", self._fmt_val(tf), subscript="f", outer_arrows=True, label_right=True)

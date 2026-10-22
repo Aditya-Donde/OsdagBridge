@@ -32,6 +32,7 @@ from osdag_core.cli import _get_output_dictionary
 
 from osdag_core.design_type.compression_member.compression_bolted import Compression_bolted
 from osdag_core.design_type.compression_member.compression_welded import Compression_welded
+from osdag_core.design_type.flexural_member.flexure import Flexure
 from osdag_core.design_type.tension_member.tension_bolted import Tension_bolted
 from osdag_core.design_type.tension_member.tension_welded import Tension_welded
 
@@ -40,6 +41,7 @@ MODULE_CLASS_MAP = {
     "Tension Member Design - Welded to End Gusset": Tension_welded,
     "Struts Bolted to End Gusset": Compression_bolted,
     "Struts Welded to End Gusset": Compression_welded,
+    "Flexural Members - Simply Supported": Flexure,
 }
 
 # OUTPUT SUPPRESSION
@@ -642,6 +644,27 @@ design_dict_struts_welded = {
     "Weld.Material_Grade_OverWrite": "290",
     "out_titles_status": [1, 1, 1, 1, 1],
 }
+
+# FLEXURE SIMPLY SUPPORTED BEAM (ROLLED BEAM)
+design_dict_flexure_simply_supported = {
+    "Module": "Flexural Members - Simply Supported",
+    "Member.Profile": "Beams and Columns",
+    "Member.Designation": ["JB 150"],
+    "Material": "E 250 (Fe 410 W)A",
+    "Member.Material": "E 250 (Fe 410 W)A",
+    "Flexure.Type": "Major Laterally Supported",
+    "Torsion.restraint": "Fully Restrained",
+    "Warping.restraint": "Both flanges fully restrained",
+    "Member.Length": "2.0",
+    "Load.Moment": "10.0",
+    "Load.Shear": "15.0",
+    "Length.Overwrite": "NA",
+    "Loading.Condition": "Normal",
+    "Effective.Area_Para": "1.0",
+    "Optimum.Class": "No",
+    "Bearing.Length": "50.0",
+}
+
 
 # STANDALONE TESTING
 if __name__ == "__main__":

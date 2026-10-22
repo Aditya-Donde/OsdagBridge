@@ -695,6 +695,9 @@ KEY_MP_ED_BOTTOM_FLANGE_WIDTH           = "member_properties.end_diaphragm_detai
 KEY_MP_ED_TOP_FLANGE_THICKNESS          = "member_properties.end_diaphragm_details.top_flange_thickness"
 KEY_MP_ED_BOTTOM_FLANGE_THICKNESS       = "member_properties.end_diaphragm_details.bottom_flange_thickness"
 KEY_MP_ED_IS_SECTION                   = "member_properties.end_diaphragm_details.is_section"
+KEY_MP_ED_FLEXURE_TYPE                 = "member_properties.end_diaphragm_details.flexure_type"
+KEY_MP_ED_TORSIONAL_RESTRAINT          = "member_properties.end_diaphragm_details.torsional_restraint"
+KEY_MP_ED_WARPING_RESTRAINT             = "member_properties.end_diaphragm_details.warping_restraint"
 KEY_MP_ED_MASS                       = "member_properties.end_diaphragm_details.section_properties.mass"
 KEY_MP_ED_SECTIONAL_AREA             = "member_properties.end_diaphragm_details.section_properties.area"
 KEY_MP_ED_SECTIONAL_IY             = "member_properties.end_diaphragm_details.section_properties.iy"
@@ -1535,7 +1538,14 @@ VALUES_CROSS_BRACING_TYPE = [
     "K-Bracing",
     "X-Bracing",
 ]
-VALUES_END_DIAPHRAGM_TYPE = ["Cross Bracing", "Rolled Beam", "Welded Beam"]
+ED_TYPE_CROSS_BRACING = "Cross Bracing"
+ED_TYPE_ROLLED_BEAM = "Rolled Beam"
+ED_TYPE_WELDED_BEAM = "Welded Beam"
+VALUES_END_DIAPHRAGM_TYPE = [ED_TYPE_CROSS_BRACING, ED_TYPE_ROLLED_BEAM, ED_TYPE_WELDED_BEAM]
+
+ED_GROUP_CROSS_BRACING = "crossbracing"
+ED_GROUP_ROLLED_BEAM = "rolled_beam"
+ED_GROUP_WELDED_BEAM = "welded_beam"
 VALUES_WEARING_COAT_MATERIAL = ["Concrete", "Bituminous", "Custom"]
 VALUES_RAILING_TYPE = ["IRC 5 - RCC Railing", "IRC 5 - Steel Railing", "Custom"]
 VALUES_CUSTOM_AXLE_TYPE = ["Single", "Bogie"]
