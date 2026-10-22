@@ -147,5 +147,14 @@ def railing_load_from_inputs(additional_inputs: dict) -> float | None:
     Returns ``None`` when the key is absent, in which case
     ``railing_dead_load_kN_m()`` will apply the IRC 6:2017 Cl.206.5 default.
     """
-    val = additional_inputs.get(_KEY_RAILING_LOAD)
-    return float(val) if val is not None else None
+    mode = str(additional_inputs.get("typical_section.railing.load_mode") or "").strip()
+    if mode == "Custom":
+        val = additional_inputs.get("typical_section.railing.load_value")
+    else:
+        val = additional_inputs.get(_KEY_RAILING_LOAD)
+    if val is None or str(val).strip() == "":
+        return None
+    try:
+        return float(val)
+    except (TypeError, ValueError):
+        return None
