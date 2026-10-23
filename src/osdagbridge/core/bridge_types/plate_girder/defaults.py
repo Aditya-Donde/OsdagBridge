@@ -272,11 +272,25 @@ def _update_typical_section_defaults(input_dict: dict) -> None:
     _rl_load      = railing_dead_load_kN_m()   # kN/m — IRC 6:2017 Cl.206.5 (150 kg/m)
     _rl_height_m  = 1100 / 1e3                 # m    — IRC 5:2015 Cl.109.7.2.3 minimum
 
-    _update(KEY_RL_TYPE,       "IRC 5 - RCC Railing")
-    _update(KEY_RL_WIDTH,      DEFAULT_RAILING_WIDTH)        # m
-    _update(KEY_RL_HEIGHT,     _rl_height_m)                 # m
-    _update(KEY_RL_LOAD_MODE,  "As per IRC 6")
-    _update(KEY_RL_LOAD_VALUE, _rl_load)                     # kN/m
+    rl_mode = str(input_dict.get(KEY_RL_LOAD_MODE) or "").strip()
+    rl_type = str(input_dict.get(KEY_RL_TYPE) or "").strip()
+    if rl_mode == "Custom" or rl_type == "Custom":
+        if not rl_type:
+            input_dict[KEY_RL_TYPE] = "IRC 5 - RCC Railing"
+        if input_dict.get(KEY_RL_WIDTH) in (None, ""):
+            input_dict[KEY_RL_WIDTH] = DEFAULT_RAILING_WIDTH
+        if input_dict.get(KEY_RL_HEIGHT) in (None, ""):
+            input_dict[KEY_RL_HEIGHT] = _rl_height_m
+        if not rl_mode:
+            input_dict[KEY_RL_LOAD_MODE] = "Custom"
+        if input_dict.get(KEY_RL_LOAD_VALUE) in (None, ""):
+            input_dict[KEY_RL_LOAD_VALUE] = _rl_load
+    else:
+        _update(KEY_RL_TYPE,       "IRC 5 - RCC Railing")
+        _update(KEY_RL_WIDTH,      DEFAULT_RAILING_WIDTH)        # m
+        _update(KEY_RL_HEIGHT,     _rl_height_m)                 # m
+        _update(KEY_RL_LOAD_MODE,  "As per IRC 6")
+        _update(KEY_RL_LOAD_VALUE, _rl_load)                     # kN/m
 
     # --- Wearing Course sub-tab ---
     # Density and thickness match on_wearing_material_changed() in typical_section_details.py

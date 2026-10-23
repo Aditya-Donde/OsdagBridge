@@ -254,6 +254,8 @@ class AdditionalInputs(QDialog):
             from osdagbridge.core.bridge_types.plate_girder.ui_fields_additional_input import END_CONNECTORS
             UIBuilder.wire_end_connectors(END_CONNECTORS, ai=self)
 
+        self._apply_saved_railing_load_mode()
+
     def set_defaults(self) -> None:  # lifecycle: populates all widgets from working_input_dict; called at init time only
         """
         Central function to populate all widgets in the dialog from working_input_dict.
@@ -1101,17 +1103,48 @@ class AdditionalInputs(QDialog):
             self._update_input_dict(k, str(v))
         self.update_girder_layout("spacing")
 
-    def compute_railing_values(self, input_dict: dict) -> dict:
-        from osdagbridge.core.utils.codes.irc5_2015 import IRC5_2015
-        from osdagbridge.core.utils.codes.keyfile import KEY_CRASH_BARRIER_TYPE, KEY_FOOTPATH, KEY_RAILING_TYPE
+    def _railing_code_load(self, railing_type: str) -> float:
         from osdagbridge.core.bridge_components.super_structure.railing.properties import (
             rcc_railing_load, steel_railing_load, load_from_area, RCC_DENSITY,
         )
         from osdagbridge.core.bridge_components.super_structure.railing.geometry import rigid_barrier_with_railing_area
 
+        if railing_type == "IRC 5 - Steel Railing":
+            return steel_railing_load()["total_load_kN_per_m"]
+        if railing_type == "Custom":
+            area = rigid_barrier_with_railing_area("rcc")["barrier_area"]
+            return load_from_area(area, RCC_DENSITY)
+        return rcc_railing_load()["total_load_kN_per_m"]
+
+    def _railing_mode(self) -> str:
+        mode_combo = self.findChild(QComboBox, KEY_RL_LOAD_MODE)
+        if mode_combo and mode_combo.currentText().strip():
+            return mode_combo.currentText().strip()
+        return str(self.working_input_dict.get(KEY_RL_LOAD_MODE) or "As per IRC 6").strip()
+
+    def _apply_railing_load_mode(self, code_load: float) -> dict:
+        mode_combo = self.findChild(QComboBox, KEY_RL_LOAD_MODE)
+        load_edit = self.findChild(QLineEdit, KEY_RL_LOAD_VALUE)
+        if mode_combo:
+            self._set_enabled(mode_combo, True)
+        if self._railing_mode() == "Custom":
+            self._set_enabled(load_edit, True)
+            return {}
+        self._set_enabled(load_edit, False)
+        return {KEY_RL_LOAD_VALUE: f"{code_load:.3f}"}
+
+    def _apply_saved_railing_load_mode(self) -> None:
+        mode_combo = self.findChild(QComboBox, KEY_RL_LOAD_MODE)
+        load_edit = self.findChild(QLineEdit, KEY_RL_LOAD_VALUE)
+        if mode_combo:
+            self._set_enabled(mode_combo, True)
+        self._set_enabled(load_edit, self._railing_mode() == "Custom")
+
+    def compute_railing_values(self, input_dict: dict) -> dict:
+        from osdagbridge.core.utils.codes.irc5_2015 import IRC5_2015
+        from osdagbridge.core.utils.codes.keyfile import KEY_CRASH_BARRIER_TYPE, KEY_FOOTPATH, KEY_RAILING_TYPE
+
         railing_type = input_dict.get(KEY_RL_TYPE, VALUES_RAILING_TYPE[0])
-        mode_combo   = self.findChild(QComboBox, KEY_RL_LOAD_MODE)
-        load_edit    = self.findChild(QLineEdit, KEY_RL_LOAD_VALUE)
 
         if railing_type == "IRC 5 - RCC Railing":
             geom = IRC5_2015.cl_109_6_3_shapes(
@@ -1120,16 +1153,10 @@ class AdditionalInputs(QDialog):
             for key in [KEY_RL_WIDTH, KEY_RL_HEIGHT]:
                 w = self.findChild(QLineEdit, key)
                 if w: w.setEnabled(False)
-            if mode_combo:
-                mode_combo.blockSignals(True)
-                mode_combo.setCurrentText("As per IRC 6")
-                mode_combo.blockSignals(False)
-                mode_combo.setEnabled(False)
-            if load_edit: load_edit.setEnabled(False)
-            load   = rcc_railing_load()["total_load_kN_per_m"]
+            load   = self._railing_code_load(railing_type)
             width  = geom.get("railing_width")
             height = geom.get("railing_height")
-            result = {KEY_RL_LOAD_VALUE: f"{load:.3f}"}
+            result = self._apply_railing_load_mode(load)
             if width  is not None: result[KEY_RL_WIDTH]  = f"{width / 1000:.3f}"
             if height is not None: result[KEY_RL_HEIGHT] = f"{height / 1000:.3f}"
             return result
@@ -1141,16 +1168,10 @@ class AdditionalInputs(QDialog):
             for key in [KEY_RL_WIDTH, KEY_RL_HEIGHT]:
                 w = self.findChild(QLineEdit, key)
                 if w: w.setEnabled(False)
-            if mode_combo:
-                mode_combo.blockSignals(True)
-                mode_combo.setCurrentText("As per IRC 6")
-                mode_combo.blockSignals(False)
-                mode_combo.setEnabled(False)
-            if load_edit: load_edit.setEnabled(False)
-            load   = steel_railing_load()["total_load_kN_per_m"]
+            load   = self._railing_code_load(railing_type)
             width  = geom.get("railing_width")
             height = geom.get("railing_height")
-            result = {KEY_RL_LOAD_VALUE: f"{load:.3f}"}
+            result = self._apply_railing_load_mode(load)
             if width  is not None: result[KEY_RL_WIDTH]  = f"{width / 1000:.3f}"
             if height is not None: result[KEY_RL_HEIGHT] = f"{height / 1000:.3f}"
             return result
@@ -1159,36 +1180,25 @@ class AdditionalInputs(QDialog):
             for key in [KEY_RL_WIDTH, KEY_RL_HEIGHT]:
                 w = self.findChild(QLineEdit, key)
                 self._set_enabled(w, True)
-            self._set_enabled(mode_combo, True)
-            mode = mode_combo.currentText() if mode_combo else "As per IRC 6"
-            if mode == "As per IRC 6":
-                self._set_enabled(load_edit, False)
-                area = rigid_barrier_with_railing_area("rcc")["barrier_area"]
-                load = load_from_area(area, RCC_DENSITY)
-                return {KEY_RL_LOAD_VALUE: f"{load:.3f}"}
-            else:
-                self._set_enabled(load_edit, True)
-                return {}
+            return self._apply_railing_load_mode(self._railing_code_load(railing_type))
 
         return {}
 
     def on_railing_load_mode_changed(self, mode: str):
         load_edit    = self.findChild(QLineEdit, KEY_RL_LOAD_VALUE)
         type_combo   = self.findChild(QComboBox, KEY_RL_TYPE)
-        railing_type = type_combo.currentText() if type_combo else ""
+        railing_type = type_combo.currentText() if type_combo else str(self.working_input_dict.get(KEY_RL_TYPE) or "")
+        self.working_input_dict[KEY_RL_LOAD_MODE] = mode
 
-        if railing_type != "Custom":
+        if str(mode).strip() == "Custom":
+            self._set_enabled(load_edit, True)
+            if load_edit and load_edit.text().strip():
+                self._update_input_dict(KEY_RL_LOAD_VALUE, load_edit.text().strip())
             return
 
-        if mode == "As per IRC 6":
-            self._set_enabled(load_edit, False)
-            from osdagbridge.core.bridge_components.super_structure.railing.properties import load_from_area, RCC_DENSITY
-            from osdagbridge.core.bridge_components.super_structure.railing.geometry import rigid_barrier_with_railing_area
-            area = rigid_barrier_with_railing_area("rcc")["barrier_area"]
-            load = load_from_area(area, RCC_DENSITY)
-            if load_edit: load_edit.setText(f"{load:.3f}")
-        else:
-            self._set_enabled(load_edit, True)
+        self._set_enabled(load_edit, False)
+        if load_edit:
+            load_edit.setText(f"{self._railing_code_load(railing_type):.3f}")
 
     # ── Wearing Course Sub-Tab ───────────────────────────────────────────────────────────────
 
