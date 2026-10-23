@@ -1,4 +1,6 @@
-from PySide6.QtWidgets import QWidget, QLabel, QToolButton, QHBoxLayout, QSizePolicy, QVBoxLayout
+from PySide6.QtWidgets import (
+    QWidget, QLabel, QToolButton, QHBoxLayout, QSizePolicy, QVBoxLayout
+)
 from PySide6.QtCore import Qt, QPoint, QEvent
 from PySide6.QtGui import QMouseEvent, QFont
 
@@ -85,6 +87,8 @@ class CustomTitleBar(QWidget):
         if self.btn_max_restore is not None and self.parent() is not None:
             self.parent().installEventFilter(self)
             self._update_max_restore_icon()
+
+
 
     def setTitle(self, title):
         """Set the title displayed in the title bar."""

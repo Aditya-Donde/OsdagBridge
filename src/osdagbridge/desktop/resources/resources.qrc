@@ -13,6 +13,7 @@
         <file>vectors/location_pin.svg</file>
 
         <file>themes/lightstyle.qss</file>
+        <file>themes/darkstyle.qss</file>
         
         <file>vectors/design.svg</file>
         <file>vectors/save.svg</file>

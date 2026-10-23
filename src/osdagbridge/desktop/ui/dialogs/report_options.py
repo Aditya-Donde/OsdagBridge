@@ -5,7 +5,7 @@ from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, QLineEdit,
     QPushButton, QTextEdit, QTreeWidget, QTreeWidgetItem,
     QStackedWidget, QWidget, QFileDialog, QLabel, QMessageBox,
-    QGroupBox, QGridLayout,
+    QGroupBox, QGridLayout, QApplication,
 )
 from PySide6.QtCore import Qt
 from osdagbridge.core.reports.report_generator import (
@@ -16,6 +16,7 @@ from osdagbridge.core.reports.report_generator import (
 from osdagbridge.desktop.ui.utils.custom_titlebar import CustomTitleBar
 from osdagbridge.desktop.ui.dialogs.custom_messagebox import CustomMessageBox, MessageBoxType
 from osdagbridge.desktop.ui.utils.custom_cursors import pointing_hand_cursor
+from osdagbridge.desktop.ui.utils.theme_manager import apply_theme_to_dialog
 
 class ReportOptionsDialog(QDialog):
     """Design Report options dialog — Page 1 collects project metadata
@@ -23,17 +24,14 @@ class ReportOptionsDialog(QDialog):
     Page 2 lets the user customise report sections.
     """
 
-    # ── styling constants ────────────────────────────────────────────
-    _OSDAG_GREEN = "#90AF13"
-    _OSDAG_GREEN_DARK = "#64850c"
-
     def __init__(self, parent=None):
         super().__init__(None)
         self._main_window = parent
         self.setObjectName("report_options_dialog")
         self.resize(520, 650)
 
-        self.setStyleSheet(self._build_stylesheet())
+        # Style via QSS stylesheet
+        apply_theme_to_dialog(self)
 
         self.setupWrapper()
 
@@ -55,80 +53,6 @@ class ReportOptionsDialog(QDialog):
 
         self.request = None
         self.is_preview = False
-
-    # ── stylesheet ───────────────────────────────────────────────────
-
-    @classmethod
-    def _build_stylesheet(cls) -> str:
-        """Return the complete stylesheet for the dialog."""
-        return f"""
-            QDialog#report_options_dialog {{
-                background-color: #ffffff;
-                border: 1px solid {cls._OSDAG_GREEN};
-            }}
-
-            /* Labels */
-            QLabel#headline {{ font-size: 15px; font-weight: 700; color: #2d2d2d; }}
-            QLabel {{ color: #1f1f1f; }}
-
-            /* Group-box sections */
-            QGroupBox {{
-                font-weight: 600;
-                font-size: 12px;
-                color: {cls._OSDAG_GREEN_DARK};
-                border: 1px solid #d0d0d0;
-                border-radius: 6px;
-                margin-top: 14px;
-                padding: 14px 10px 10px 10px;
-            }}
-            QGroupBox::title {{
-                subcontrol-origin: margin;
-                subcontrol-position: top left;
-                padding: 2px 8px;
-                color: {cls._OSDAG_GREEN_DARK};
-            }}
-
-            /* Inputs */
-            QLineEdit {{
-                padding: 4px 8px;
-                border: 1px solid #070707;
-                border-radius: 6px;
-                background-color: white;
-                color: #000000;
-                font-weight: normal;
-            }}
-            QTextEdit {{
-                padding: 4px 8px;
-                border: 1px solid #070707;
-                border-radius: 6px;
-                background-color: white;
-                color: #000000;
-                font-weight: normal;
-            }}
-
-            /* Buttons */
-            QPushButton#primary {{
-                background-color: #ffffff;
-                color: #1f1f1f;
-                border: 1px solid {cls._OSDAG_GREEN};
-                border-radius: 6px;
-                padding: 6px 14px;
-                font-weight: 600;
-            }}
-            QPushButton#primary:hover {{ background-color: {cls._OSDAG_GREEN}; color: white; }}
-            QPushButton#primary:pressed {{ background-color: {cls._OSDAG_GREEN_DARK}; color: white; }}
-
-            QPushButton#ghost {{
-                background-color: #ffffff;
-                color: #1d1d1d;
-                border: 1px solid #ccc;
-                border-radius: 6px;
-                padding: 6px 14px;
-                font-weight: 600;
-            }}
-            QPushButton#ghost:hover {{ background-color: #f0f0f0; }}
-            QPushButton#ghost:pressed {{ background-color: #d9d9d9; }}
-        """
 
     # ── wrapper (title-bar + size-grip) ──────────────────────────────
 
@@ -297,43 +221,6 @@ class ReportOptionsDialog(QDialog):
         layout.addWidget(hint_lbl)
 
         self.tree = QTreeWidget()
-        self.tree.setStyleSheet("""
-            QTreeWidget {
-                border: 1px solid #d0d0d0;
-                border-radius: 6px;
-                background-color: #ffffff;
-                outline: 0;
-            }
-            QTreeWidget::item {
-                padding: 4px 0px;
-                color: #1f1f1f;
-            }
-            QTreeWidget::item:disabled {
-                color: #8a8a8a;
-            }
-            QTreeWidget::item:selected,
-            QTreeWidget::item:hover {
-                background: transparent;
-                color: #1f1f1f;
-            }
-            QTreeWidget::indicator {
-                width: 16px;
-                height: 16px;
-                border: 1px solid #333333;
-                border-radius: 3px;
-                background-color: #ffffff;
-            }
-            QTreeWidget::indicator:hover {
-                border: 1px solid #555555;
-            }
-            QTreeWidget::indicator:checked {
-                image: url(:/vectors/checked.svg);
-            }
-            QTreeWidget::indicator:disabled {
-                border: 1px solid #b0b0b0;
-                background-color: #f0f0f0;
-            }
-        """)
         self.tree.setHeaderHidden(True)
         self.tree.setRootIsDecorated(False)
         layout.addWidget(self.tree)
