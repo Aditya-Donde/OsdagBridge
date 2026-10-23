@@ -254,6 +254,8 @@ class AdditionalInputs(QDialog):
             from osdagbridge.core.bridge_types.plate_girder.ui_fields_additional_input import END_CONNECTORS
             UIBuilder.wire_end_connectors(END_CONNECTORS, ai=self)
 
+        self.refresh_member_properties()
+
     def set_defaults(self) -> None:  # lifecycle: populates all widgets from working_input_dict; called at init time only
         """
         Central function to populate all widgets in the dialog from working_input_dict.
@@ -455,6 +457,7 @@ class AdditionalInputs(QDialog):
 
         # Apply Tab Active/Deactive States-------------------------------------
         self.refresh_typical_section()
+        self.refresh_member_properties()
 
     def reset_active_tab_defaults(self) -> None:  # lifecycle: resets current tab's fields to default_input_dict values
         """
@@ -746,6 +749,44 @@ class AdditionalInputs(QDialog):
             wc_mat.setCurrentText(other)
             wc_mat.setCurrentText(cur)
 
+    def refresh_member_properties(self) -> None:  # refresh: repopulates Girder Details, End Diaphragm, Cross Bracing, and Stiffener comboboxes
+        """
+        Refresh Member Properties sub-tabs and controls (Girder Details, End Diaphragm,
+        Cross Bracing, Stiffener Details) so that dynamic options match the current
+        number of girders in working_input_dict.
+        """
+        from osdagbridge.core.bridge_types.plate_girder.defaults import _on_no_of_girders_changed
+        try:
+            _on_no_of_girders_changed(self.working_input_dict)
+        except Exception:
+            pass
+
+        # 1. Girder Details - Select Girder combobox
+        gd_combo = self.findChild(QComboBox, KEY_MP_GD_SELECT_GIRDER)
+        if gd_combo:
+            self._on_girder_count_refreshed(KEY_TS_NO_OF_GIRDERS, gd_combo)
+
+        # 2. End Diaphragm - Select Girders combobox
+        ed_combo = self.findChild(QComboBox, KEY_MP_ED_SELECT_GIRDERS)
+        if ed_combo:
+            self._on_ed_girder_count_refreshed(KEY_TS_NO_OF_GIRDERS, ed_combo)
+            ed_member_id = self.findChild(QLineEdit, KEY_MP_ED_MEMBER_ID)
+            if ed_member_id:
+                self._on_ed_member_id_refreshed(KEY_MP_ED_SELECT_GIRDERS, ed_member_id)
+
+        # 3. Cross Bracing - Select Girders combobox
+        cb_combo = self.findChild(QComboBox, KEY_MP_CB_SELECT_GIRDERS)
+        if cb_combo:
+            self._on_cb_girder_count_refreshed(KEY_TS_NO_OF_GIRDERS, cb_combo)
+            cb_member_id = self.findChild(QLineEdit, KEY_MP_CB_MEMBER_ID)
+            if cb_member_id:
+                self._on_cb_member_id_refreshed(KEY_MP_CB_SELECT_GIRDERS, cb_member_id)
+
+        # 4. Stiffener Details - Select Member ID combobox
+        stiff_combo = self.findChild(QComboBox, KEY_MP_STIFFENER_SELECT_MEMBER_ID)
+        if stiff_combo:
+            self._on_stiffener_member_ids_refreshed(KEY_MP_GD_SELECT_GIRDER, stiff_combo)
+
     # ── Typical Section - Primary Fields ───────────────────────────────────────────────────────
 
     def update_girder_layout(self, changed_field=None):  # recalculates overall bridge width and solves girder layout (spacing, overhang, count)
@@ -853,6 +894,7 @@ class AdditionalInputs(QDialog):
             reason_parts.append(f"overhang {overhang_old:.2f} -> {result.deck_overhang:.2f}")
         if result.no_of_girders != girders_old:
             reason_parts.append(f"girders {girders_old} -> {result.no_of_girders}")
+            self.refresh_member_properties()
 
         if result.deck_overhang > result.girder_spacing + 1e-6:
             lbl = self.findChild(QLabel, "layout_notice.warning")
@@ -890,6 +932,7 @@ class AdditionalInputs(QDialog):
         if self.update_girder_layout("girders"):
             from osdagbridge.core.bridge_types.plate_girder.defaults import _on_no_of_girders_changed
             _on_no_of_girders_changed(self.working_input_dict)
+            self.refresh_member_properties()
 
     # ── Crash Barrier Sub-Tab ─────────────────────────────────────────────────────────────
 
@@ -1266,11 +1309,20 @@ class AdditionalInputs(QDialog):
             target_widget.setVisible(not is_exterior)
 
     def _on_girder_count_refreshed(self, origin_key: str, current_object: QComboBox) -> None:  # END_CONNECTOR: repopulates Select Girder combo when girder count changes
+        if current_object is None:
+            return
         value = self.working_input_dict.get(origin_key)
         if value is None:
             return
 
-        count = int(float(str(value)))
+        try:
+            count = int(float(str(value)))
+        except (ValueError, TypeError):
+            return
+
+        if count < 1:
+            return
+
         current = current_object.currentText()
 
         # clear() drops the combo to 0 items -> currentIndex() == -1
@@ -1284,6 +1336,13 @@ class AdditionalInputs(QDialog):
             else:
                 current_object.addItem(f"Girder {i} (Interior)", f"G{i}")
         idx = current_object.findText(current)
+        if idx < 0 and current:
+            # Preserve selection when Interior/Exterior designation changes (e.g. Girder 3)
+            prefix = current.split("(")[0].strip()
+            for i in range(current_object.count()):
+                if current_object.itemText(i).startswith(prefix):
+                    idx = i
+                    break
         current_object.setCurrentIndex(idx if idx >= 0 else 0)
         current_object.blockSignals(False)
 
@@ -2184,6 +2243,8 @@ class AdditionalInputs(QDialog):
         origin_key      : KEY_TS_NO_OF_GIRDERS — reads count from working_input_dict
         current_object  : KEY_MP_ED_SELECT_GIRDERS combo to repopulate
         """
+        if current_object is None:
+            return
         value = self.working_input_dict.get(origin_key)
         try:
             count = int(float(str(value or 0)))
@@ -2197,10 +2258,13 @@ class AdditionalInputs(QDialog):
         pairs = [f"{girders[i]} to {girders[i + 1]}" for i in range(len(girders) - 1)] or ["G1 to G2"]
 
         current = current_object.currentText()
+        current_object.blockSignals(True)
         current_object.clear()
         current_object.addItems(pairs)
         idx = current_object.findText(current)
         current_object.setCurrentIndex(idx if idx >= 0 else 0)
+        current_object.blockSignals(False)
+        current_object.currentTextChanged.emit(current_object.currentText())
 
     def _on_ed_member_id_refreshed(self, origin_key: str, current_object: QLineEdit) -> None:
         """Update End Diaphragm Member ID display when Select Girders changes.
@@ -2750,10 +2814,13 @@ class AdditionalInputs(QDialog):
         girders = [f"G{i}" for i in range(1, count + 1)] if count > 0 else ["G1", "G2"]
         pairs = [f"{girders[i]} to {girders[i + 1]}" for i in range(len(girders) - 1)] or ["G1 to G2"]
         current = current_object.currentText()
+        current_object.blockSignals(True)
         current_object.clear()
         current_object.addItems(pairs)
         idx = current_object.findText(current)
         current_object.setCurrentIndex(idx if idx >= 0 else 0)
+        current_object.blockSignals(False)
+        current_object.currentTextChanged.emit(current_object.currentText())
 
     def _on_cb_member_id_refreshed(self, origin_key: str, target_widget: QLineEdit) -> None:
         if target_widget is None:
