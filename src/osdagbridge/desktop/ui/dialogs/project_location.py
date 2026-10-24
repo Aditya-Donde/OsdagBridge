@@ -344,7 +344,7 @@ class ProjectLocationDialog(QDialog):
         self.location_city_label.setVisible(False)
         right_layout.addWidget(self.location_city_label)
 
-        self.location_state_label = QLabel("State: —")
+        self.location_state_label = QLabel("State/Union Territory: —")
         self.location_state_label.setObjectName("valueLabel")
         self.location_state_label.setVisible(False)
         right_layout.addWidget(self.location_state_label)
@@ -389,7 +389,7 @@ class ProjectLocationDialog(QDialog):
         vbox.addWidget(label)
 
         state_col = QVBoxLayout()
-        state_lbl = QLabel("State")
+        state_lbl = QLabel("State/Union Territory")
         self.state_combo = NoScrollComboBox()
         self.state_combo.addItems(get_state_list())
         apply_field_style(self.state_combo)
@@ -1081,7 +1081,7 @@ class ProjectLocationDialog(QDialog):
         self.state_combo.blockSignals(True)
         self.district_combo.blockSignals(True)
         
-        # Reset to first item ("Select State")
+        # Reset to first item ("Select State/Union Territory")
         if self.state_combo.count() > 0:
             self.state_combo.setCurrentIndex(0)
         
@@ -1148,6 +1148,7 @@ class ProjectLocationDialog(QDialog):
             LAST_LOCATION_DATA = None
             self._current_weather_data = None
             return False
+
         # Convert to weather dict format for _update_irc_values
         weather = {
             "wind_speed": zone_data.get("wind_Vb"),
@@ -1232,7 +1233,7 @@ class ProjectLocationDialog(QDialog):
             return
         
         state = self.state_combo.currentText()
-        if not state or state == "Select State":
+        if not state or state == "Select State/Union Territory":
             return # Should not happen if logic is correct
             
         weather = get_weather(state, district_name)
@@ -1304,7 +1305,7 @@ class ProjectLocationDialog(QDialog):
             self.location_city_label.setVisible(True)
             self.location_state_label.setVisible(True)
             self.location_city_label.setText(f"City: {city or '—'}")
-            self.location_state_label.setText(f"State: {state or '—'}")
+            self.location_state_label.setText(f"State/Union Territory: {state or '—'}")
         else:
             self.location_title_label.setVisible(False)
             self.location_city_label.setVisible(False)
