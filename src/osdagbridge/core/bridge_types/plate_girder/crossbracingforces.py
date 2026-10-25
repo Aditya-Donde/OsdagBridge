@@ -171,6 +171,9 @@ from osdagbridge.core.utils.common import (
     KEY_MP_ED_BOTTOM_CHORD_SECTION_TYPE,
     KEY_MP_ED_BOTTOM_CHORD_SECTION_DESIG,
     KEY_MP_ED_IS_SECTION,
+    KEY_MP_ED_FLEXURE_TYPE,
+    KEY_MP_ED_TORSIONAL_RESTRAINT,
+    KEY_MP_ED_WARPING_RESTRAINT,
     KEY_MP_ED_SYMMETRY,
     KEY_MP_ED_TOTAL_DEPTH,
     KEY_MP_ED_WEB_THICKNESS,
@@ -1220,7 +1223,7 @@ class EndDiaphragmForces:
         chord_comp_lc = None
         _tol = 0.005
 
-        for lc in result_data["loadcases"]:
+        for lc in result_data.get("loadcases", []):
             lc_str = str(lc)
             # Envelope pseudo cases copy the governing combination's values;
             # skip them so they can't steal the governing-LC label here.
@@ -1579,7 +1582,11 @@ class EndDiaphragmForces:
 
             # -- CASE B: ROLLED BEAM DIAPHRAGM --
             elif ed_type == "Rolled Beam":
-                is_sec_des = bridge.input_dict.get(f"{KEY_MP_ED_IS_SECTION}{member_suffix}")
+                is_sec_des = (
+                    bridge.input_dict.get(f"{KEY_MP_ED_IS_SECTION}{member_suffix}")
+                    or bridge.input_dict.get(KEY_MP_ED_IS_SECTION)
+                    or ""
+                )
                 if is_sec_des:
                     bridge.output_dict[make_pair_key(KEY_MP_ED_IS_SECTION, pair_id)] = is_sec_des
                     beam_details = self._query_rolled_beam_section(is_sec_des)
@@ -1599,6 +1606,91 @@ class EndDiaphragmForces:
                         bridge.output_dict[make_pair_key(KEY_TD_ED_PROP_ZV, pair_id)] = beam_details["Zv"]
                         bridge.output_dict[make_pair_key(KEY_TD_ED_PROP_ZUZ, pair_id)] = beam_details["Zuz"]
                         bridge.output_dict[make_pair_key(KEY_TD_ED_PROP_ZUV, pair_id)] = beam_details["Zuv"]
+
+                # Run Simply Supported Beam (Flexure) module design check
+                try:
+                    from osdagbridge.core.utils.connect import (
+                        design_dict_flexure_simply_supported,
+                        run_calculation,
+                    )
+                    pair_forces = self.get_pair_forces(pair, 1.0)
+                    if not any(v is not None for k, v in pair_forces.items() if k.endswith("_kN")):
+                        try:
+                            cb = CrossBracingForces(bridge=bridge)
+                            cb_forces = cb.get_design_forces_dict()
+                            fallback_pair_forces = (cb_forces.get("pairs") or {}).get(pair)
+                            if fallback_pair_forces:
+                                pair_forces = fallback_pair_forces
+                        except Exception:
+                            pass
+
+                    diag_c = abs(float(pair_forces.get("diag_compression_kN") or 0.0))
+                    diag_t = abs(float(pair_forces.get("diag_tension_kN") or 0.0))
+                    shear_kn = max(diag_c, diag_t, 10.0)
+                    moment_knm = max(round(shear_kn * s / 4.0, 2), 1.0)
+
+                    forces_dict.setdefault("pairs", {})[pair] = {
+                        "ed_shear_kN": round(shear_kn, 3),
+                        "ed_moment_kNm": round(moment_knm, 3),
+                    }
+
+                    d = copy.deepcopy(design_dict_flexure_simply_supported)
+                    d["Member.Designation"] = [is_sec_des] if is_sec_des else ["JB 150"]
+                    d["Member.Length"] = str(round(s, 3))
+                    d["Load.Shear"] = str(round(shear_kn, 2))
+                    d["Load.Moment"] = str(round(moment_knm, 2))
+
+                    flexure_type = (
+                        bridge.input_dict.get(f"{KEY_MP_ED_FLEXURE_TYPE}{member_suffix}")
+                        or bridge.input_dict.get(KEY_MP_ED_FLEXURE_TYPE)
+                        or "Major Laterally Supported"
+                    )
+                    d["Flexure.Type"] = str(flexure_type)
+
+                    torsional_restraint = (
+                        bridge.input_dict.get(f"{KEY_MP_ED_TORSIONAL_RESTRAINT}{member_suffix}")
+                        or bridge.input_dict.get(KEY_MP_ED_TORSIONAL_RESTRAINT)
+                        or "Fully Restrained"
+                    )
+                    d["Torsion.restraint"] = str(torsional_restraint)
+
+                    warping_restraint = (
+                        bridge.input_dict.get(f"{KEY_MP_ED_WARPING_RESTRAINT}{member_suffix}")
+                        or bridge.input_dict.get(KEY_MP_ED_WARPING_RESTRAINT)
+                        or "Both flanges fully restrained"
+                    )
+                    d["Warping.restraint"] = str(warping_restraint)
+
+                    res = run_calculation(d, quiet=True)
+                    pair_designs.setdefault(pair, {})["rolled_beam"] = res
+
+                    # If section designation was determined by solver, populate it into output_dict
+                    opt_des = res.get("Optimum.Designation")
+                    if opt_des and not is_sec_des:
+                        bridge.output_dict[make_pair_key(KEY_MP_ED_IS_SECTION, pair_id)] = opt_des
+                        beam_details = self._query_rolled_beam_section(opt_des)
+                        if beam_details:
+                            bridge.output_dict[make_pair_key(KEY_TD_ED_PROP_L, pair_id)] = s
+                            bridge.output_dict[make_pair_key(KEY_TD_ED_PROP_H, pair_id)] = beam_details["H"]
+                            bridge.output_dict[make_pair_key(KEY_TD_ED_PROP_B, pair_id)] = beam_details["B"]
+                            bridge.output_dict[make_pair_key(KEY_TD_ED_PROP_TW, pair_id)] = beam_details["tw"]
+                            bridge.output_dict[make_pair_key(KEY_TD_ED_PROP_TF, pair_id)] = beam_details["tF"]
+                            bridge.output_dict[make_pair_key(KEY_TD_ED_PROP_M, pair_id)] = beam_details["M"]
+                            bridge.output_dict[make_pair_key(KEY_TD_ED_PROP_A, pair_id)] = beam_details["A"]
+                            bridge.output_dict[make_pair_key(KEY_TD_ED_PROP_IZ, pair_id)] = beam_details["Iz"]
+                            bridge.output_dict[make_pair_key(KEY_TD_ED_PROP_IV, pair_id)] = beam_details["Iv"]
+                            bridge.output_dict[make_pair_key(KEY_TD_ED_PROP_RZ, pair_id)] = beam_details["rz"]
+                            bridge.output_dict[make_pair_key(KEY_TD_ED_PROP_RV, pair_id)] = beam_details["rv"]
+                            bridge.output_dict[make_pair_key(KEY_TD_ED_PROP_ZZ, pair_id)] = beam_details["Zz"]
+                            bridge.output_dict[make_pair_key(KEY_TD_ED_PROP_ZV, pair_id)] = beam_details["Zv"]
+                            bridge.output_dict[make_pair_key(KEY_TD_ED_PROP_ZUZ, pair_id)] = beam_details["Zuz"]
+                            bridge.output_dict[make_pair_key(KEY_TD_ED_PROP_ZUV, pair_id)] = beam_details["Zuv"]
+                except Exception as exc:
+                    print(f"  [EndDiaphragm] SKIP {pair} rolled_beam: {exc}")
+                    pair_designs.setdefault(pair, {})["rolled_beam"] = {
+                        "design_status": False,
+                        "design_error": f"{type(exc).__name__}: {exc}"
+                    }
 
             # -- CASE C: WELDED BEAM DIAPHRAGM --
             elif ed_type == "Welded Beam":
@@ -1661,7 +1753,7 @@ class EndDiaphragmForces:
                     bridge.output_dict[make_pair_key(KEY_TD_ED_PROP_ZUZ, pair_id)] = z_pz / 1000.0
                     bridge.output_dict[make_pair_key(KEY_TD_ED_PROP_ZUV, pair_id)] = z_py / 1000.0
 
-        if forces_dict.get("pairs"):
+
             self._print_enddiaphragm_design_results(forces_dict, pair_designs)
 
         bridge.output_dict["end_diaphragm_forces_dict"] = forces_dict
@@ -1717,16 +1809,16 @@ class EndDiaphragmForces:
                     "B": val_f(row[4]) / 1000.0,
                     "tw": val_f(row[5]) / 1000.0,
                     "tF": val_f(row[6]) / 1000.0,
-                    "M": val_f(row[2]),
-                    "A": val_f(row[3]),
-                    "Iz": val_f(row[10]),
-                    "Iv": val_f(row[11]),
-                    "rz": val_f(row[12]),
-                    "rv": val_f(row[13]),
-                    "Zz": val_f(row[14]),
-                    "Zv": val_f(row[15]),
-                    "Zuz": val_f(row[16]),
-                    "Zuv": val_f(row[17]),
+                    "M": val_f(row[1]),
+                    "A": val_f(row[2]),
+                    "Iz": val_f(row[7]),
+                    "Iv": val_f(row[8]),
+                    "rz": val_f(row[9]),
+                    "rv": val_f(row[10]),
+                    "Zz": val_f(row[11]),
+                    "Zv": val_f(row[12]),
+                    "Zuz": val_f(row[13]),
+                    "Zuv": val_f(row[14]),
                 }
             con.close()
         except Exception as exc:
@@ -1746,6 +1838,19 @@ class EndDiaphragmForces:
         for pair, vals in forces_dict.get("pairs", {}).items():
             designs = pair_designs.get(pair, {})
             print(f"  Pair : {pair}")
+
+            if "rolled_beam" in designs:
+                rb_res = designs["rolled_beam"]
+                desig = rb_res.get("Optimum.Designation") or "—"
+                ur = rb_res.get("Optimum.UR")
+                m_cap = rb_res.get("Moment.Strength")
+                status = "PASS" if rb_res.get("design_status") else "FAIL"
+                ur_str = f"  UR={float(ur):.3f}" if ur not in (None, "") else ""
+                cap_str = f"  Md={float(m_cap):.2f} kNm" if m_cap not in (None, "") else ""
+                m_demand = vals.get("ed_moment_kNm", "—")
+                print(f"    Rolled Beam [Flexure  Mz={m_demand} kNm]  →  {desig}{cap_str}{ur_str}  [{status}]")
+                continue
+
 
             _chords = [m for m in ("chord", "top_chord", "bottom_chord") if m in designs] or ["chord"]
             for label, t_key, c_key, member in (

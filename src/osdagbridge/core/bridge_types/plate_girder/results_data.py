@@ -778,8 +778,11 @@ def _extract_osdag_summary(result: dict) -> dict:
     return {
         "section":     _first("section_size.designation", "Optimum.Designation", "Section", "Designation"),
         "capacity_kN": _first("Member.tension_capacity", "Member.compression_capacity", "Member.capacity", "Design.Strength", "Capacity", as_float=True),
+        "moment_capacity_kNm": _first("Moment.Strength", as_float=True),
+        "shear_capacity_kN":   _first("Shear.Strength", as_float=True),
         "efficiency":  _first("Member.efficiency", "Optimum.UR", "Efficiency", "UR", as_float=True),
-        "slenderness": _first("Member.Slenderness", "Member.slenderness", "Slenderness", as_float=True),
+        "slenderness": _first("Member.Slenderness", "Member.slenderness", "Slenderness", "ESR", as_float=True),
+        "classification": _first("Optimum.SectionClassification", "SectionClassification"),
         "connection":  "Welded" if "Weld.Type" in result else "Bolted",
         "design_status": bool(status) if status is not None else None,
     }
