@@ -246,6 +246,8 @@ from osdagbridge.core.utils.common import (
     KEY_MP_STIFFENER_INTERMEDIATE_OUTSTAND,
     KEY_MP_STIFFENER_INTERMEDIATE_SPACING,
     KEY_MP_STIFFENER_LONGITUDINAL,
+    KEY_ALL_LOAD_COMBINATIONS,
+    KEY_LC_COMBINATIONS,
     )
 
 from osdagbridge.core.bridge_types.plate_girder.initial_sizing import (
@@ -685,6 +687,8 @@ class PlateGirderBridge:
         self.create_uls_combinations()
         
         self.create_sls_combinations()
+
+        self.output_dict[KEY_ALL_LOAD_COMBINATIONS] = self._all_load_combinations()
 
     def _stage_cad_generation(self):
         # Validate that the CAD parameter DTO can be assembled, but do NOT build
@@ -2431,6 +2435,22 @@ class PlateGirderBridge:
         """
         included = self._combination_keys(lambda k: ".sls." in k)
         return self.grillage_model.create_sls_combinations(included_keys=included)
+
+    def _all_load_combinations(self) -> list:
+        """
+        Every load combination listed in Additional Inputs, for the Generate
+        Results table: the IRC 6 defaults as saved by the checkbox list
+        (``{"name": "Basic_1 : <expr>", "included", ...}``), then the custom
+        combinations (``{"name", "expr", "included"}``).
+        """
+        combinations = [dict(c) for c in self.input_dict.get(self._LC_SELECTION_KEY) or []]
+        for c in self.input_dict.get(KEY_LC_COMBINATIONS) or []:
+            combinations.append({
+                "name":     c.get("name", ""),
+                "expr":     " + ".join(f"{i.get('factor', '')}{i.get('case', '')}" for i in c.get("items") or []),
+                "included": c.get("included", True),
+            })
+        return combinations
 
     def create_dl_ll_combination(self, dl_factor: float = 1.0, ll_factor: float = 1.0):
         """

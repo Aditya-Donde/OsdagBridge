@@ -681,6 +681,14 @@ class CustomWindow(QWidget):
             # Update Computed Values in input_dict before Design
             self._sync_compute_results_to_input_dict()
 
+            # The IRC 6 combination list reaches input_dict only once a checkbox is
+            # changed; until then every combination is included.
+            if not self.input_dict.get("irc6_default_combinations") and self._additional_inputs_dialog is not None:
+                from osdagbridge.desktop.ui.dialogs.additional_input.ui_builder._load_combination_widget import LoadCombinationWidget
+                lc_widget = self._additional_inputs_dialog.findChild(LoadCombinationWidget, "irc6_default_combinations")
+                if lc_widget is not None:
+                    self.input_dict["irc6_default_combinations"] = [dict(c, included=True) for c in lc_widget._data]
+
             import sys
             import traceback
 
