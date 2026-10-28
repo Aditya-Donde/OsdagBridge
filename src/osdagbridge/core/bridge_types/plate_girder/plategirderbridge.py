@@ -20,7 +20,7 @@ from .dto import (
 from .defaults import (
     BASIC_INPUT_DICT,
 )
-from .initial_sizing import DEFAULT_FOOTPATH_WIDTH
+from .initial_sizing import DEFAULT_FOOTPATH_WIDTH, steel_i_section_properties
 from .analyser import BridgeGrillageModel
 from osdagbridge.core.utils.memory_guard import OpsMemoryGuard, log_memory, tracemalloc_mark_start
 from .analysis_results import PlateGirderAnalysisResults
@@ -268,6 +268,26 @@ from osdagbridge.core.utils.logger import bridge_logger
 from osdagbridge.core.bridge_types.plate_girder.designer import (BridgeConfig, IRC22CapacityCalculator, DCREngine, DemandEnvelope, design_envelope_engine,)
 
 _DB_PATH = Path(__file__).resolve().parents[2] / "data" / "ResourceFiles" / "Intg_osdag.sqlite"
+
+# Section-property keys recomputed at design time (see _convert_girder_dims_mm_to_m).
+# Maps steel_i_section_properties() argument -> input_dict key.
+_SECTION_DIM_KEYS = {
+    "D":      KEY_MP_GIRDER_DEPTH,
+    "bf_top": KEY_MP_GIRDER_TOP_FLANGE_WIDTH,
+    "tf_top": KEY_MP_GIRDER_TOP_FLANGE_THICKNESS,
+    "bf_bot": KEY_MP_GIRDER_BOTTOM_FLANGE_WIDTH,
+    "tf_bot": KEY_MP_GIRDER_BOTTOM_FLANGE_THICKNESS,
+    "tw":     KEY_MP_GIRDER_WEB_THICKNESS,
+}
+_SECTION_OUTPUT_KEYS = (
+    KEY_MP_GIRDER_WEB_DEPTH,
+    KEY_MP_GIRDER_SECTIONAL_AREA, KEY_MP_GIRDER_MASS,
+    KEY_MP_GIRDER_SECTIONAL_IZ, KEY_MP_GIRDER_SECTIONAL_IY,
+    KEY_MP_GIRDER_RADIUS_GYRATION_Z, KEY_MP_GIRDER_RADIUS_GYRATION_Y,
+    KEY_MP_GIRDER_ELASTIC_MODULUS_ZZ, KEY_MP_GIRDER_ELASTIC_MODULUS_ZY,
+    KEY_MP_GIRDER_PLASTIC_MODULUS_ZUZ, KEY_MP_GIRDER_PLASTIC_MODULUS_ZUY,
+    KEY_MP_GIRDER_TORSION_CONSTANT_IT, KEY_MP_GIRDER_WARPING_CONSTANT_IW,
+)
 
 # Steel constants (same values used in analyser.py __main__)
 _STEEL_E0       = 200 * GPa    # Initial elastic modulus (Pa)
@@ -625,6 +645,23 @@ class PlateGirderBridge:
             _to_m(base_key)
             for gi in range(count):
                 _to_m(f"{base_key}.G{gi + 1}.M1")
+
+        # Recompute web depth and all derived section properties from the final
+        # metre dimensions (single source: steel_i_section_properties).
+        for gi in range(count):
+            suffix = f".G{gi + 1}.M1"
+            raw = {arg: inp.get(f"{key}{suffix}") for arg, key in _SECTION_DIM_KEYS.items()}
+            if None in raw.values():
+                continue
+            props = steel_i_section_properties(**{a: float(v) for a, v in raw.items()})
+            if props[KEY_MP_GIRDER_WEB_DEPTH] <= 0:
+                raise ValueError(
+                    f"Invalid web depth for G{gi + 1}: {props[KEY_MP_GIRDER_WEB_DEPTH]}"
+                )
+            # Per-girder keys always; legacy scalar keys follow G1.
+            for sfx in ((suffix, "") if gi == 0 else (suffix,)):
+                for k in _SECTION_OUTPUT_KEYS:
+                    inp[f"{k}{sfx}"] = props[k]
 
     def _run_stage(self, stage_num: str, func, *args, **kwargs):
         # Check for user cancel before entering each stage, then emit start/complete markers

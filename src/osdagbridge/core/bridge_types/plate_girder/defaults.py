@@ -683,6 +683,20 @@ def _on_no_of_girders_changed(working_input_dict: dict) -> None:
             (KEY_MP_GIRDER_WARPING_CONSTANT_IW,     section_props['I_w']),
         ]
 
+        if design_mode != 'Optimized':
+            # Thicknesses are SAIL-snapped for display, so derive web depth and
+            # section properties from those same snapped values (single source).
+            from .initial_sizing import steel_i_section_properties
+            _snap = lambda k: float(ceil_to_sail(section_props[k] * 1e3)) / 1e3
+            _derived = steel_i_section_properties(
+                D=section_props['D'],
+                bf_top=section_props['B_top'], tf_top=_snap('t_f_top'),
+                bf_bot=section_props['B_bot'], tf_bot=_snap('t_f_bot'),
+                tw=_snap('t_w'),
+            )
+            _derived[KEY_MP_GIRDER_WEB_DEPTH] = round(_derived[KEY_MP_GIRDER_WEB_DEPTH] * 1e3)  # m -> mm
+            MP_GIRDER_PROPS = [(k, _derived.get(k, v)) for k, v in MP_GIRDER_PROPS]
+
         if design_mode == 'Optimized':
             MP_GIRDER_PROPS += [
                 (KEY_MP_GIRDER_TOP_FLANGE_THICKNESS,    "All"),
