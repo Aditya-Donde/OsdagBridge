@@ -1,6 +1,6 @@
 # =============================================================================
 # Chapter 5: Design Checks
-# Extracted from report_generator.py — DO NOT add business logic here.
+# Extracted from report_generator.py â€” DO NOT add business logic here.
 # =============================================================================
 from __future__ import annotations
 from typing import TYPE_CHECKING
@@ -192,7 +192,7 @@ from osdagbridge.core.reports.report_utils import (
 if TYPE_CHECKING:
     pass
 def ch5_design_checks(checks_data, bridge, chart_paths=None) -> str:
-    """Chapter 5 — Design Checks.
+    """Chapter 5 â€” Design Checks.
 
     Parameters
     ----------
@@ -241,8 +241,8 @@ def ch5_design_checks(checks_data, bridge, chart_paths=None) -> str:
     t52_groups = [(lbl, t52_items) for lbl, _ in girder_entries]
 
     # Generate Table 5.3 rows
-    # Flexure UR is stored as a percent (cat_urs × 100); show as a ratio (÷100,
-    # 2 dp) and PASS when ≤ 1.0.
+    # Flexure UR is stored as a percent (cat_urs Ã— 100); show as a ratio (Ã·100,
+    # 2 dp) and PASS when â‰¤ 1.0.
     try:
         _flex_ur = float(bridge.output_dict.get(KEY_UTIL_FLEXURE)) / 100.0
         _flex_ur_str = f"{_flex_ur:.2f}"
@@ -258,8 +258,8 @@ def ch5_design_checks(checks_data, bridge, chart_paths=None) -> str:
     t53_groups = [(lbl, t53_items) for lbl, _ in girder_entries]
 
     # Generate Table 5.4 rows
-    # Shear UR is stored as a percent (cat_urs × 100); show as a ratio (÷100,
-    # 2 dp) and PASS when ≤ 1.0.
+    # Shear UR is stored as a percent (cat_urs Ã— 100); show as a ratio (Ã·100,
+    # 2 dp) and PASS when â‰¤ 1.0.
     try:
         _shear_ur = float(bridge.output_dict.get(KEY_UTIL_SHEAR)) / 100.0
         _shear_ur_str = f"{_shear_ur:.2f}"
@@ -280,14 +280,14 @@ def ch5_design_checks(checks_data, bridge, chart_paths=None) -> str:
     t54_groups = [(lbl, t54_items) for lbl, _ in girder_entries]
 
     # Generate Table 5.5 rows
-    # Interaction DCRs use the engine bands: PASS <0.90, WARN <1.00, FAIL ≥1.00.
+    # Interaction DCRs use the engine bands: PASS <0.90, WARN <1.00, FAIL â‰¥1.00.
     def _interaction_status(ratio):
         if ratio < 0.90:
             return "PASS"
         elif ratio < 1.00:
             return "WARN"
         return r"\textcolor{red}{FAIL}"
-    # M-V interaction UR stored as percent → show ratio (2 dp).
+    # M-V interaction UR stored as percent â†’ show ratio (2 dp).
     try:
         _mv_ur = float(bridge.output_dict.get(KEY_UTIL_INTERACTION)) / 100.0
         _mv_ur_str = f"{_mv_ur:.2f}"
@@ -295,7 +295,7 @@ def ch5_design_checks(checks_data, bridge, chart_paths=None) -> str:
     except (TypeError, ValueError):
         _mv_ur_str = ""
         _mv_status = "---"
-    # M-N interaction: None → no axial load → N/A.
+    # M-N interaction: None â†’ no axial load â†’ N/A.
     _mn_r  = bridge.output_dict.get(KEY_SD_MN_RATIO)
     _mn_ax = bridge.output_dict.get(KEY_SD_MN_AXIAL)
     _mn_mo = bridge.output_dict.get(KEY_SD_MN_MOMENT)
@@ -314,7 +314,7 @@ def ch5_design_checks(checks_data, bridge, chart_paths=None) -> str:
     t55_groups = [(lbl, t55_items) for lbl, _ in girder_entries]
 
     # Generate Table 5.6 rows
-    # LTB UR stored as percent → show ratio (2 dp); engine bands via _interaction_status.
+    # LTB UR stored as percent â†’ show ratio (2 dp); engine bands via _interaction_status.
     try:
         _ltb_ur = float(bridge.output_dict.get(KEY_UTIL_LTB)) / 100.0
         _ltb_ur_str = f"{_ltb_ur:.2f}"
@@ -362,7 +362,7 @@ def ch5_design_checks(checks_data, bridge, chart_paths=None) -> str:
     t57_groups = [(lbl, t57_items) for lbl, _ in girder_entries]
 
     # Generate table - intermediate stiffener checks (IS 800 CL. 8.7.1.2)
-    # Status: PASS when Provided ≥ Required.
+    # Status: PASS when Provided â‰¥ Required.
     def _ge_status(provided, required):
         try:
             return "PASS" if float(provided) >= float(required) else r"\textcolor{red}{FAIL}"
@@ -380,7 +380,7 @@ def ch5_design_checks(checks_data, bridge, chart_paths=None) -> str:
     ]
     t58_groups = [(lbl, t58_items) for lbl, _ in girder_entries]
 
-    # (Intermediate Stiffener Checks) is a verification table — it only
+    # (Intermediate Stiffener Checks) is a verification table â€” it only
     # has data when the user supplied stiffener sizes (Design Type = Custom). In
     # Optimized mode the stiffeners are auto-sized (nothing to verify), so the
     # whole table is omitted from the report.
@@ -395,14 +395,14 @@ def ch5_design_checks(checks_data, bridge, chart_paths=None) -> str:
     else:
         t58_block = ""
 
-    # Generate Table 5.9 rows — bearing stiffener checks (IS 800 Cl.8.7.3).
+    # Generate Table 5.9 rows â€” bearing stiffener checks (IS 800 Cl.8.7.3).
     # End panel == bearing stiffener for this bridge. Each resistance vs reaction R.
-    # Resistances are 0 in guidance-only mode (optimized w/o outstand) → N/A until
-    # the designer defaults outstand to (bf−tw)/2.
+    # Resistances are 0 in guidance-only mode (optimized w/o outstand) â†’ N/A until
+    # the designer defaults outstand to (bfâˆ’tw)/2.
     _bs_r = bridge.output_dict.get(KEY_SD_BS_R)
     def _bs_check(resist_key):
         prov = bridge.output_dict.get(resist_key)
-        # Resistance not computed (guidance mode) → N/A.
+        # Resistance not computed (guidance mode) â†’ N/A.
         if prov is None or float(prov) <= 0.0 or _bs_r is None:
             return ("N/A", "N/A", "N/A")
         req_s  = f"{_bs_r} kN"
@@ -421,9 +421,9 @@ def ch5_design_checks(checks_data, bridge, chart_paths=None) -> str:
     ]
     t59_groups = [(lbl, t59_items) for lbl, _ in girder_entries]
 
-    # ── Table 5.10: Serviceability — Deflection Checks (IRC 22 Cl. 604.3.2) ──────
+    # â”€â”€ Table 5.10: Serviceability â€” Deflection Checks (IRC 22 Cl. 604.3.2) â”€â”€â”€â”€â”€â”€
     # Allowable limits: span-dependent, same for all girders, from output_dict.
-    # Actual deflections: per-girder from bridge._deflections_cache — the same
+    # Actual deflections: per-girder from bridge._deflections_cache â€” the same
     # source used by resolve_deflection_live_load/total in generate_results_values_builder.py.
     # Keys: {"G1": {"live_mm": X, "total_mm": Y}, ...}
     # lbl from girder_entries is "G1", "G2", ... which matches cache keys exactly.
@@ -439,7 +439,7 @@ def ch5_design_checks(checks_data, bridge, chart_paths=None) -> str:
         """Format a numeric value to nd decimal places; empty string when None."""
         try:
             return f"{float(v):.{nd}f}"
-            
+
         except (TypeError, ValueError):
             return ""
 
@@ -470,10 +470,10 @@ def ch5_design_checks(checks_data, bridge, chart_paths=None) -> str:
              _dfmt(_total_mm, nd=3), _defl_status(_total_mm, _allow_total_mm)],
         ]))
 
-    # Generate Table 5.11 rows — SLS steel stress limitation (IRC 22 Cl. 604.3.1).
+    # Generate Table 5.11 rows â€” SLS steel stress limitation (IRC 22 Cl. 604.3.1).
     # Concrete & rebar deck stresses are deck-global and belong with the deck
     # checks, so this table shows only the per-girder steel check. Steel stress is
-    # a single envelope-SLS value (same for every girder); allowable = 0.9·fy.
+    # a single envelope-SLS value (same for every girder); allowable = 0.9Â·fy.
     # Both live in the nested output_dict["design_results"] dict, not as flat keys.
     def _mpa(v):
         s = _dfmt(v, nd=2)
@@ -495,14 +495,14 @@ def ch5_design_checks(checks_data, bridge, chart_paths=None) -> str:
     t511_rows = [[lbl, r"Structural Steel ($0.9\,f_y$)", _steel_alw_str, _steel_sig_str, _steel_status]
                  for lbl, _ in girder_entries]
 
-    # Supporting calculation for Table 5.11 — the "Actual Stress" above is NOT
+    # Supporting calculation for Table 5.11 â€” the "Actual Stress" above is NOT
     # a plain Md/Z bending stress; it is the Cl.604.3.1 equivalent stress
     # fe = sqrt(fbc^2 + 3*tau_b^2) on the short-term composite section under
     # the SLS envelope moment. Expose that breakdown so the reported value can
     # be independently recomputed. Source: the controlling girder's own
     # sls_fibre_stresses dict (design_results["per_girder"][controlling_girder]
     # ["sls_fibre_stresses"]), already written by compute_sls_stresses() in
-    # designer.py — read-only here, no calculation is added or changed.
+    # designer.py â€” read-only here, no calculation is added or changed.
     _ctrl_girder = _dr_511.get("controlling_girder")
     _per_girder  = _dr_511.get("per_girder", {}) or {}
     _girder_data = _per_girder.get(_ctrl_girder, {}) or {}
@@ -556,7 +556,7 @@ def ch5_design_checks(checks_data, bridge, chart_paths=None) -> str:
         """
 
 
-    # Generate Table 5.12 rows — per-girder fatigue assessment (IRC 22 Cl. 605),
+    # Generate Table 5.12 rows â€” per-girder fatigue assessment (IRC 22 Cl. 605),
     # mirroring the Generate Results dialog: one row per girder showing the
     # GOVERNING fatigue check (worst of normal/shear by DCR). Source is the nested
     # design_results["steeldesign.uls_per_girder"]["fatigue"][G{i}] dict, keyed by
@@ -575,11 +575,11 @@ def ch5_design_checks(checks_data, bridge, chart_paths=None) -> str:
         t512_rows.append([lbl, _mpa(_g.get("demand")), _mpa(_g.get("capacity")),
                           _dfmt(_g.get("ur"), nd=2), _fat_status(_g.get("status"))])
     # ------------------------------------------------------------------
-    # Table 5.12 – Supporting Calculations
+    # Table 5.12 â€“ Supporting Calculations
     # ------------------------------------------------------------------
 
     # The flat KEY_SD_FATIGUE_* values belong to the controlling girder only,
-    # while Table 5.12 rows are per-girder — so name the girder in the text.
+    # while Table 5.12 rows are per-girder â€” so name the girder in the text.
     _fat_g_ref = f" ({_tex(str(_ctrl_girder))})" if _ctrl_girder else ""
 
     _fat_stress_range = _dr_511.get(KEY_SD_FATIGUE_STRESS_RANGE_MPA)
@@ -643,7 +643,7 @@ def ch5_design_checks(checks_data, bridge, chart_paths=None) -> str:
     \]
     """
 
-    # Generate Table 5.13 rows — per-girder design summary, mirroring the Generate
+    # Generate Table 5.13 rows â€” per-girder design summary, mirroring the Generate
     # Results dialog's resolve_design_results_summary: one row per girder showing
     # the CONTROLLING check (highest DCR among all checks) plus the real load
     # case/combination that drives it. Source: design_results["per_girder"][G{i}].
@@ -653,7 +653,7 @@ def ch5_design_checks(checks_data, bridge, chart_paths=None) -> str:
         s = _dfmt(value, nd=2)
         if not s:
             return ""
-        return (s + " " + unit) if unit and str(unit) not in ("-", "–") else s
+        return (s + " " + unit) if unit and str(unit) not in ("-", "â€“") else s
 
     g_summary_rows = []
     for _gi, (lbl, _) in enumerate(girder_entries, start=1):
@@ -683,7 +683,7 @@ def ch5_design_checks(checks_data, bridge, chart_paths=None) -> str:
                                _with_unit(ctrl.get("capacity"), ctrl.get("capacity_unit")),
                                _dfmt(ctrl.get("dcr"), nd=3), _fat_status(ctrl.get("status"))])
 
-    # ── Table 5.14: Shear Connector Capacity (bridge-level) ──────────────────
+    # â”€â”€ Table 5.14: Shear Connector Capacity (bridge-level) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     # Qu (Cl.606.3.1, Eq.6.1) and Qr (Cl.606.3.2) are single per-stud
     # values for the bridge, stored flat inside output_dict["design_results"].
     _dr_sc = bridge.output_dict.get("design_results", {}) or {}
@@ -701,7 +701,7 @@ def ch5_design_checks(checks_data, bridge, chart_paths=None) -> str:
          _kn(_dr_sc.get(KEY_SD_SC_Qr_kN)), "IRC 22 Cl. 606.3.2"],
     ]
 
-    # ── Table 5.15: Shear Connector Spacing (bridge-level) ───────────────────
+    # â”€â”€ Table 5.15: Shear Connector Spacing (bridge-level) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     # Required spacings SL1/SL2/SR and the max-spacing limit are single bridge
     # values in design_results. Each criterion passes when the provided spacing
     # is no larger than that criterion's required spacing (denser = safe).
@@ -714,7 +714,7 @@ def ch5_design_checks(checks_data, bridge, chart_paths=None) -> str:
 
     def _sp_row(crit, req):
         return [crit, _mm(req), _sc_prov_str, _defl_status(_sc_prov, req)]
-        
+
     def _detail_row(text):
         return (
             r"\multicolumn{4}{|p{0.96\linewidth}|}{"
@@ -726,8 +726,8 @@ def ch5_design_checks(checks_data, bridge, chart_paths=None) -> str:
         s = _dfmt(value, nd=2)
         return _detail_row(
             rf"{name} = {s}" + (f" {unit}" if s else "")
-        )    
-    
+        )
+
     t515_calc_content = rf"""
     \vspace{{0.4em}}
 
@@ -735,7 +735,7 @@ def ch5_design_checks(checks_data, bridge, chart_paths=None) -> str:
     \textbf{{Supporting Calculations}}
 
     \begin{{flushleft}}
-    
+
     % ---------------- S_L1 ----------------
     \noindent\textbullet\hspace{{0.5em}}
     $S_{{L1}}=\dfrac{{\sum Q_u}}{{V_L}}$
@@ -776,7 +776,7 @@ def ch5_design_checks(checks_data, bridge, chart_paths=None) -> str:
     ={_dfmt(_dr_sc.get(KEY_SD_SC_H_kN),2)}\,\mathrm{{kN}}$
 
     \\
-    
+
     \vspace{{0.4em}}
 
     \noindent\textbullet\hspace{{0.5em}}$S_R=\dfrac{{\sum Q_r}}{{V_r}}$
@@ -801,9 +801,9 @@ def ch5_design_checks(checks_data, bridge, chart_paths=None) -> str:
         _sp_row("Max Spacing Limit (IRC 22)", _dr_sc.get("stud_spacing_max_mm")),
     ]
 
-    # ── Table 5.16: Transverse Shear & Detailing Checks (bridge-level) ───────
+    # â”€â”€ Table 5.16: Transverse Shear & Detailing Checks (bridge-level) â”€â”€â”€â”€â”€â”€â”€
     # Transverse shear (Cl.606.10): VL vs slab capacity VRd. Detailing (Cl.606.6):
-    # min transverse reinforcement, stud diameter ≤ 2·tf, edge distance ≥ 25 mm.
+    # min transverse reinforcement, stud diameter â‰¤ 2Â·tf, edge distance â‰¥ 25 mm.
     # All single bridge values in design_results; stud diameter from input_dict.
     def _cm2m(v):
         s = _dfmt(v, nd=2)
@@ -812,11 +812,11 @@ def ch5_design_checks(checks_data, bridge, chart_paths=None) -> str:
     def _knm(v):
         s = _dfmt(v, nd=2)
         return (s + " kN/m") if s else ""
-    
+
     def _mm2(v):
         s = _dfmt(v, nd=2)
         return (s + " mm$^2$") if s else ""
-    
+
     def _mm4(v):
         s = _dfmt(v, nd=2)
         return (s + " mm$^4$") if s else ""
@@ -859,13 +859,13 @@ def ch5_design_checks(checks_data, bridge, chart_paths=None) -> str:
     _d_lim    = _dr_sc.get(KEY_SD_SC_D_LIMIT)
     _edge     = _dr_sc.get(KEY_SD_SC_EDGE_DIST)
     _edge_req = _dr_sc.get(KEY_SD_SC_REQ_EDGE_DIST)
-    
+
     def _row515a(parameter, expression, value,):
         return parameter + r" & " + expression + r" & " + value + r" \\[6pt]"
 
     def _row516(check, value, status):
         return [check, value, status]
-    
+
     t515a_content = (
         _row515a(
             r"$V$",
@@ -944,7 +944,7 @@ def ch5_design_checks(checks_data, bridge, chart_paths=None) -> str:
                 area_cm2 = bridge.output_dict.get(f"{pfx}.A")
                 rv_cm = bridge.output_dict.get(f"{pfx}.rv")
 
-                # Convert Area: cm² -> mm²
+                # Convert Area: cmÂ² -> mmÂ²
                 area_str = f"{float(area_cm2) * 100:.1f}" if area_cm2 is not None else ""
                 # Convert rv: cm -> mm
                 rmin_str = f"{float(rv_cm) * 10:.1f}" if rv_cm is not None else ""
@@ -966,25 +966,25 @@ def ch5_design_checks(checks_data, bridge, chart_paths=None) -> str:
             kl_diag = bridge.get_cb_effective_length("diagonal")
             slnd_diag = bridge.get_cb_slenderness(pair, "diagonal")
             status_diag = get_status_str(slnd_diag, 250)
-            
+
             kl_tc = bridge.get_cb_effective_length("chord")
             slnd_tc = bridge.get_cb_slenderness(pair, "chord")
             status_tc = get_status_str(slnd_tc, 250)
-            
+
             kl_bc = bridge.get_cb_effective_length("chord")
             slnd_bc = bridge.get_cb_slenderness(pair, "chord")
             status_bc = get_status_str(slnd_bc, 400)
-            
+
             top_chord_enabled = bridge.output_dict.get("member_properties.cross_bracing_details.top_chord", True)
             bottom_chord_enabled = bridge.output_dict.get("member_properties.cross_bracing_details.bottom_chord", True)
-            
+
             group_rows = [["Diagonal", "C", kl_diag, slnd_diag, r"250 --- " + status_diag]]
-            
+
             if top_chord_enabled:
                 group_rows.append(["Top chord", "C", kl_tc, slnd_tc, r"250 --- " + status_tc])
             if bottom_chord_enabled:
                 group_rows.append(["Bottom chord", "T", kl_bc, slnd_bc, r"400 --- " + status_bc])
-                
+
             cb_slenderness_groups.append((pair, group_rows))
 
     # Generate Table 5.20(c) rows
@@ -1003,15 +1003,15 @@ def ch5_design_checks(checks_data, bridge, chart_paths=None) -> str:
         cb_capacity_groups.append((pair, group_rows))
 
 
-    # ── Deck slab design value helpers (Tables 5.17 a/b/c/e/g) ────────────────
+    # â”€â”€ Deck slab design value helpers (Tables 5.17 a/b/c/e/g) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     # Read from deck_rpt = output_dict["deck_report_values"] (common.KEY_DD_*).
     # Tables 5.17(d) punching shear and 5.17(f) one-way shear stay as
-    # placeholders — those are not computed by design_deck_slab().
+    # placeholders â€” those are not computed by design_deck_slab().
     _dk_has = bool(deck_rpt)
     _dk_oh = bool(deck_rpt.get(KEY_DD_HAS_OVERHANG))
     _DKPH = r"\placeholder{---}"
 
-    # Ground-contact-dimension reference (IRC 6:2017 Cl. 204.1) — computed by
+    # Ground-contact-dimension reference (IRC 6:2017 Cl. 204.1) â€” computed by
     # deckdesign.design_deck_slab() via IRC6_2017.contact_dimension_reference()
     # and stored in deck_rpt; not derived here to avoid duplicating IRC data
     # in the report layer. Placeholder (not "Table 2") when deck design hasn't
@@ -1060,7 +1060,7 @@ def ch5_design_checks(checks_data, bridge, chart_paths=None) -> str:
             return "N/A"
         return f"{x:.{nd}f}" + unit
 
-    # Overhang moment breakdown (railing, slab DL, eccentric-wheel LL) —
+    # Overhang moment breakdown (railing, slab DL, eccentric-wheel LL) â€”
     # every component below is computed once in deckdesign.design_deck_slab()
     # and stored in deck_rpt; KEY_DD_M_DL_OH / KEY_DD_M_LL_OH (the totals)
     # are unchanged and still come from there too.
@@ -1079,7 +1079,7 @@ def ch5_design_checks(checks_data, bridge, chart_paths=None) -> str:
     _dk_gov_wk_str = (f"{_dk_gov_wk:.4f}" if _dk_has else _DKPH)
     _dk_crack_ok = _dk_has and _dk_gov_wk <= _dkv(KEY_DD_WK_LIMIT)
 
-    # ── Table 5.22: Overall Design Check Summary — fill all rows ─────────────
+    # â”€â”€ Table 5.22: Overall Design Check Summary â€” fill all rows â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     # Three row families:
     #  (1) Girder DCR-engine checks: one source (design_results["per_girder"])
     #      gives Demand, Capacity, UR, and the governing LC together. Worst
@@ -1088,14 +1088,33 @@ def ch5_design_checks(checks_data, bridge, chart_paths=None) -> str:
     #      deflection) only appear per-LC, so fall back to per_lc for those.
     #  (2) Deck slab: URs from deck_design_results (Demand/Capacity not stored).
     #  (3) Cross bracing: existing get_cb_* helpers (worst pair/member by UR).
-    #      End diaphragm has no report helpers yet → "---" for now.
+    #      End diaphragm has no report helpers yet â†’ "---" for now.
     chart_paths = chart_paths or {}
-    ur_chart = (_fig_embed(chart_paths.get("ur_summary"),
-                           "Utilization Ratio Summary", width=r"0.82\textwidth", numbered=True)
-                if chart_paths.get("ur_summary") else "")
+
     _pg_522 = (bridge.output_dict.get("design_results", {}) or {}).get("per_girder", {}) or {}
     _dd_522 = bridge.output_dict.get("deck_design_results", {}) or {}
 
+    ur_chart_figures = []
+    ur_chart_definitions = (
+        ("steel", "Steel Plate Girder Utilization Ratio"),
+        ("deck", "Concrete Deck Slab Utilization Ratio"),
+        ("cross_bracing", "Cross Bracing Utilization Ratio"),
+        ("end_diaphragm", "End Diaphragm Utilization Ratio"),
+    )
+
+    for key, caption in ur_chart_definitions:
+        path = chart_paths.get(key)
+        if path:
+            ur_chart_figures.append(
+                _fig_embed(
+                    path,
+                    caption,
+                    width=r"0.82\textwidth",
+                    numbered=True,
+                )
+            )
+
+    ur_chart = "\n\\vspace{0.5em}\n".join(ur_chart_figures)
     def _vu_522(v, unit):
         s = _dfmt(v, nd=2)
         if not s:
@@ -1165,7 +1184,7 @@ def ch5_design_checks(checks_data, bridge, chart_paths=None) -> str:
                 _vu_522(dem, fallback_unit) or "---", _vu_522(cap, fallback_unit) or "---",
                 _ur_522(d) or "---")
 
-    # (3) Cross bracing — worst pair/member by UR for the given force type.
+    # (3) Cross bracing â€” worst pair/member by UR for the given force type.
     _cb_pairs_522 = bridge.get_cb_pairs()
 
     def _cb_row(force_type):
@@ -1212,7 +1231,7 @@ def ch5_design_checks(checks_data, bridge, chart_paths=None) -> str:
 
     # Deck rows: Demand/Capacity from deck_report_values (KEY_DD_*, the same dict
     # the 5.17 tables use); UR = Demand/Capacity. The deck is designed for the
-    # IRC:6 Basic ULS combination — build that combo string from the stored
+    # IRC:6 Basic ULS combination â€” build that combo string from the stored
     # partial factors (gamma_dl, gamma_ll).
     _deck_combo = (
         r"Basic ULS: " + _tex(f"{_dkv(KEY_DD_GAMMA_DL):g}DL + {_dkv(KEY_DD_GAMMA_LL):g}LL")
@@ -1233,8 +1252,8 @@ def ch5_design_checks(checks_data, bridge, chart_paths=None) -> str:
         return label + r" & \multicolumn{4}{c|}{" + msg + r"} \\[6pt]" + "\n\\hline"
 
     # End diaphragm: when configured as Cross Bracing it is designed as bracing
-    # members → mirror the cross-bracing axial rows. For Rolled / Welded beam end
-    # diaphragms the moment/shear design is not implemented yet → show a message.
+    # members â†’ mirror the cross-bracing axial rows. For Rolled / Welded beam end
+    # diaphragms the moment/shear design is not implemented yet â†’ show a message.
     _ed_type = ""
     for _k, _v in bridge.input_dict.items():
         if str(_k).startswith(KEY_MP_ED_TYPE) and _v:
@@ -1444,7 +1463,7 @@ The reinforced concrete deck slab is designed per IRC~112:2011 (flexure, shear, 
      [r"Clear Cover (IRC 112 Cl. 15.2)", r"Top " + _render_value(bridge.input_dict, KEY_DS_TOP_CLEAR_COVER) + r" / Bottom " + _render_value(bridge.input_dict, KEY_DS_BOTTOM_CLEAR_COVER) + r" mm"],
      [r"Concrete Grade (IRC 112 Cl. 6.4)", _render_value(bridge.input_dict, KEY_DECK_CONCRETE_GRADE_BASIC) + r" ($f_{ck}$ = " + _render_value(bridge.input_dict, KEY_MATERIAL_DECK_FCK) + r" MPa, $f_{ctm}$ = " + _render_value(bridge.input_dict, KEY_MATERIAL_DECK_FCTM) + r" MPa)"],
      [r"Reinforcement Grade (IRC 112 Cl. 6.2)", _render_value(bridge.input_dict, KEY_DS_REINF_MATERIAL) + r" ($f_y$ = " + _dkf(KEY_DD_FY, nd=0) + r" MPa)"],
-     [r"Dead Load per Unit Area, $w_{DL}$", _dkf(KEY_DD_WDL, nd=2) + r" kN/m² (slab self-weight)"],
+     [r"Dead Load per Unit Area, $w_{DL}$", _dkf(KEY_DD_WDL, nd=2) + r" kN/mÂ² (slab self-weight)"],
      [r"IRC 6 Wheel Load (Class A / 70R)", _dkf(KEY_DD_WHEEL_LOAD, nd=1) + r" kN"],
      [r"Tyre Contact Dimension $B$, along traffic (" + _dk_tyre_ref + r")", _dkf(KEY_DD_TYRE_WIDTH, nd=0, scale=1000.0) + r" mm"],
      [r"Impact Factor Fraction, $i$ (IRC 6 Cl. 208.2)", (f"{_dkv(KEY_DD_IMPACT_FACTOR) - 1.0:.3f}" if _dk_has else _DKPH)],
@@ -1467,7 +1486,7 @@ The reinforced concrete deck slab is designed per IRC~112:2011 (flexure, shear, 
 \cline{2-5}
  & Effective depth, $d$ & $t_s - c_{nom} - \phi/2$ & """ + _dkf(KEY_DD_D_BOT, nd=1) + r""" mm & --- \\*[6pt]
 \cline{2-5}
- & Provided Reinforcement, $A_s$ & $\phi$""" + _dkf(KEY_DD_DIA_BOT, nd=0) + r"""\,@\,""" + _dkf(KEY_DD_SPC_BOT, nd=0) + r"""\,mm c/c & """ + _dkf(KEY_DD_AS_BOT, nd=0) + r""" mm²/m & --- \\*[6pt]
+ & Provided Reinforcement, $A_s$ & $\phi$""" + _dkf(KEY_DD_DIA_BOT, nd=0) + r"""\,@\,""" + _dkf(KEY_DD_SPC_BOT, nd=0) + r"""\,mm c/c & """ + _dkf(KEY_DD_AS_BOT, nd=0) + r""" mmÂ²/m & --- \\*[6pt]
 \cline{2-5}
  & Neutral-axis depth, $x_u$ & $\frac{0.87\,f_y\,A_s}{0.36\,f_{ck}\,b}$ & """ + _dkf(KEY_DD_XU_BOT, nd=1) + r""" mm & --- \\*[6pt]
 \cline{2-5}
@@ -1475,11 +1494,11 @@ The reinforced concrete deck slab is designed per IRC~112:2011 (flexure, shear, 
 \hline
 \multirow{3}{*}{\makecell{At Support\\(Hogging)}} & Total Design BM, $M_{u,hog}$ & $0.75\,M_{u,sag}$ & """ + _dkf(KEY_DD_M_ULS_HOG, nd=2) + r""" kN-m/m & --- \\*[6pt]
 \cline{2-5}
- & Required Top Steel, $A_{st,top}$ & $M_u / (0.87\,f_y\,d)$ & """ + _dkf(KEY_DD_AS_REQ_TOP, nd=0) + r""" mm²/m & --- \\*[6pt]
+ & Required Top Steel, $A_{st,top}$ & $M_u / (0.87\,f_y\,d)$ & """ + _dkf(KEY_DD_AS_REQ_TOP, nd=0) + r""" mmÂ²/m & --- \\*[6pt]
 \cline{2-5}
  & Effective depth, $d$ & $t_s - c_{nom} - \phi/2$ & """ + _dkf(KEY_DD_D_TOP, nd=1) + r""" mm & --- \\*[6pt]
 \cline{2-5}
- & Provided Top Reinforcement, $A_s$ & $\phi$""" + _dkf(KEY_DD_DIA_TOP, nd=0) + r"""\,@\,""" + _dkf(KEY_DD_SPC_TOP, nd=0) + r"""\,mm c/c & """ + _dkf(KEY_DD_AS_TOP, nd=0) + r""" mm²/m & --- \\*[6pt]
+ & Provided Top Reinforcement, $A_s$ & $\phi$""" + _dkf(KEY_DD_DIA_TOP, nd=0) + r"""\,@\,""" + _dkf(KEY_DD_SPC_TOP, nd=0) + r"""\,mm c/c & """ + _dkf(KEY_DD_AS_TOP, nd=0) + r""" mmÂ²/m & --- \\*[6pt]
 \cline{2-5}
  & Neutral-axis depth, $x_u$ & $\frac{0.87\,f_y\,A_s}{0.36\,f_{ck}\,b}$ & """ + _dkf(KEY_DD_XU_TOP, nd=1) + r""" mm & --- \\*[6pt]
 \cline{2-5}
@@ -1533,7 +1552,7 @@ Total Hogging Moment, $M_{u,oh}$ & """ + _dkf(KEY_DD_GAMMA_DL, nd=2) + r"""\,$M_
 \hline
 Effective depth, $d$ & $t_s - c_{nom} - \phi/2$ & """ + _dkoh(KEY_DD_D_OH, nd=1, unit=" mm") + r""" & --- \\[6pt]
 \hline
-Top Reinforcement Provided & --- & $\phi$""" + _dkoh(KEY_DD_DIA_OH, nd=0) + r""" @ """ + _dkoh(KEY_DD_SPC_OH, nd=0) + r""" mm c/c (""" + _dkoh(KEY_DD_AS_OH, nd=0) + r""" mm²/m) & --- \\[6pt]
+Top Reinforcement Provided & --- & $\phi$""" + _dkoh(KEY_DD_DIA_OH, nd=0) + r""" @ """ + _dkoh(KEY_DD_SPC_OH, nd=0) + r""" mm c/c (""" + _dkoh(KEY_DD_AS_OH, nd=0) + r""" mmÂ²/m) & --- \\[6pt]
 \hline
 Moment Capacity (top steel), $M_{Rd,oh}$ & IRC 112 Cl. 9.2, Cl. 8.2.1 & """ + _dkoh(KEY_DD_MU_OH, nd=2, unit=" kN-m/m") + r""" & """ + (_dks(_dkv(KEY_DD_MU_OH) >= _dkv(KEY_DD_M_ULS_OH)) if _dk_oh else ("N/A" if _dk_has else "---")) + r""" \\[6pt]
 \hline
@@ -1571,9 +1590,9 @@ Punching Shear Check & $v_{Ed} \leq v_{Rd,c}$ & """ + (f"{_dkv(KEY_DD_PUNCH_VED)
     widths=[7.0, 8.5],
     align=["L", "L"], longtable=True, escape=False,
     body_latex=r"""
-\textnormal{Min. Reinforcement for Crack Control, $A_{s,min}$} & """ + _dkf(KEY_DD_AS_MIN, nd=0) + r""" mm²/m [IRC 112 Cl. 16.5.1] \\[6pt]
+\textnormal{Min. Reinforcement for Crack Control, $A_{s,min}$} & """ + _dkf(KEY_DD_AS_MIN, nd=0) + r""" mmÂ²/m [IRC 112 Cl. 16.5.1] \\[6pt]
 \hline
-\textnormal{Provided Reinforcement (bottom)} & $\phi$""" + _dkf(KEY_DD_DIA_BOT, nd=0) + r""" @ """ + _dkf(KEY_DD_SPC_BOT, nd=0) + r""" mm c/c (""" + _dkf(KEY_DD_AS_BOT, nd=0) + r""" mm²/m) \\[6pt]
+\textnormal{Provided Reinforcement (bottom)} & $\phi$""" + _dkf(KEY_DD_DIA_BOT, nd=0) + r""" @ """ + _dkf(KEY_DD_SPC_BOT, nd=0) + r""" mm c/c (""" + _dkf(KEY_DD_AS_BOT, nd=0) + r""" mmÂ²/m) \\[6pt]
 \hline
 \textnormal{Max. Permissible Crack Width} & """ + _dkf(KEY_DD_WK_LIMIT, nd=2) + r""" mm [IRC 112 Cl. 12.3.2, Table 12.1] \\[6pt]
 \hline
@@ -1614,25 +1633,25 @@ One-Way Shear Check & $V_{Ed} \leq V_{Rd,c}$ & """ + (f"{_dkv(KEY_DD_SHEAR_VED) 
     body_latex=r"""
 \multicolumn{4}{|l|}{\textbf{Main Reinforcement --- Bottom (Transverse)}} \\*[6pt]
 \hline
-Required Area, $A_{st,req}$ (mm²/m) & """ + _dkf(KEY_DD_AS_REQ_BOT, nd=0) + r""" mm²/m & """ + _dkf(KEY_DD_AS_BOT, nd=0) + r""" mm²/m & """ + _dks(_dkv(KEY_DD_AS_BOT) >= _dkv(KEY_DD_AS_REQ_BOT)) + r""" \\[6pt]
+Required Area, $A_{st,req}$ (mmÂ²/m) & """ + _dkf(KEY_DD_AS_REQ_BOT, nd=0) + r""" mmÂ²/m & """ + _dkf(KEY_DD_AS_BOT, nd=0) + r""" mmÂ²/m & """ + _dks(_dkv(KEY_DD_AS_BOT) >= _dkv(KEY_DD_AS_REQ_BOT)) + r""" \\[6pt]
 \hline
 Bar Diameter $\times$ Spacing & $\phi \geq 10$ mm (IRC 112) & $\phi$""" + _dkf(KEY_DD_DIA_BOT, nd=0) + r""" @ """ + _dkf(KEY_DD_SPC_BOT, nd=0) + r""" mm c/c & --- \\[6pt]
 \hline
-Min.\ Reinforcement $A_{s,min}$ (IRC 112 Cl. 16.3.1) & """ + _dkf(KEY_DD_AS_MIN, nd=0) + r""" mm²/m & """ + _dkf(KEY_DD_AS_BOT, nd=0) + r""" mm²/m & """ + _dks(_dkv(KEY_DD_AS_BOT) >= _dkv(KEY_DD_AS_MIN)) + r""" \\[6pt]
+Min.\ Reinforcement $A_{s,min}$ (IRC 112 Cl. 16.3.1) & """ + _dkf(KEY_DD_AS_MIN, nd=0) + r""" mmÂ²/m & """ + _dkf(KEY_DD_AS_BOT, nd=0) + r""" mmÂ²/m & """ + _dks(_dkv(KEY_DD_AS_BOT) >= _dkv(KEY_DD_AS_MIN)) + r""" \\[6pt]
 \hline
 Max.\ Bar Spacing (IRC 112 Cl. 16.6.1.1) & """ + _dkf(KEY_DD_SPACING_MAX, nd=0) + r""" mm & """ + _dkf(KEY_DD_SPC_BOT, nd=0) + r""" mm & """ + _dks(0.0 < _dkv(KEY_DD_SPC_BOT) <= _dkv(KEY_DD_SPACING_MAX)) + r""" \\[6pt]
 \hline
 \multicolumn{4}{|l|}{\textbf{Distribution Reinforcement --- Longitudinal}} \\*[6pt]
 \hline
-Required Area, $A_{st,dist}$ (mm²/m) & $\geq 20\%$ of main steel & """ + _dkf(KEY_DD_AS_LONG, nd=0) + r""" mm²/m & """ + _dks(_dkv(KEY_DD_AS_LONG) >= max(0.20 * _dkv(KEY_DD_AS_BOT), _dkv(KEY_DD_AS_MIN))) + r""" \\[6pt]
+Required Area, $A_{st,dist}$ (mmÂ²/m) & $\geq 20\%$ of main steel & """ + _dkf(KEY_DD_AS_LONG, nd=0) + r""" mmÂ²/m & """ + _dks(_dkv(KEY_DD_AS_LONG) >= max(0.20 * _dkv(KEY_DD_AS_BOT), _dkv(KEY_DD_AS_MIN))) + r""" \\[6pt]
 \hline
 \multicolumn{4}{|l|}{\textbf{Top Reinforcement (Support)}} \\*[6pt]
 \hline
-Required Area, $A_{st,top}$ (mm²/m) & """ + _dkf(KEY_DD_AS_REQ_TOP, nd=0) + r""" mm²/m & """ + _dkf(KEY_DD_AS_TOP, nd=0) + r""" mm²/m & """ + _dks(_dkv(KEY_DD_AS_TOP) >= _dkv(KEY_DD_AS_REQ_TOP)) + r""" \\[6pt]
+Required Area, $A_{st,top}$ (mmÂ²/m) & """ + _dkf(KEY_DD_AS_REQ_TOP, nd=0) + r""" mmÂ²/m & """ + _dkf(KEY_DD_AS_TOP, nd=0) + r""" mmÂ²/m & """ + _dks(_dkv(KEY_DD_AS_TOP) >= _dkv(KEY_DD_AS_REQ_TOP)) + r""" \\[6pt]
 \hline
 \multicolumn{4}{|l|}{\textbf{Top Reinforcement (Cantilever Overhang)}} \\*[6pt]
 \hline
-Required Area, $A_{st,oh}$ (mm²/m) & """ + _dkoh(KEY_DD_AS_REQ_OH, nd=0, unit=" mm²/m") + r""" & $\phi$""" + _dkoh(KEY_DD_DIA_OH, nd=0) + r""" @ """ + _dkoh(KEY_DD_SPC_OH, nd=0) + r""" mm c/c (""" + _dkoh(KEY_DD_AS_OH, nd=0) + r""" mm²/m) & """ + (_dks(_dkv(KEY_DD_AS_OH) >= _dkv(KEY_DD_AS_REQ_OH)) if _dk_oh else ("N/A" if _dk_has else "---")) + r""" \\[6pt]
+Required Area, $A_{st,oh}$ (mmÂ²/m) & """ + _dkoh(KEY_DD_AS_REQ_OH, nd=0, unit=" mmÂ²/m") + r""" & $\phi$""" + _dkoh(KEY_DD_DIA_OH, nd=0) + r""" @ """ + _dkoh(KEY_DD_SPC_OH, nd=0) + r""" mm c/c (""" + _dkoh(KEY_DD_AS_OH, nd=0) + r""" mmÂ²/m) & """ + (_dks(_dkv(KEY_DD_AS_OH) >= _dkv(KEY_DD_AS_REQ_OH)) if _dk_oh else ("N/A" if _dk_has else "---")) + r""" \\[6pt]
 \hline
 \multicolumn{4}{|l|}{\textbf{Cover and Detailing}} \\*[6pt]
 \hline
@@ -1655,7 +1674,7 @@ Cross bracing between adjacent plate girders provides lateral stability during c
 \setlength{\tabcolsep}{6pt}
 """ + render_grouped_report_table(
     "Cross Bracing --- Connection and Section Properties", cb_forces_groups,
-    headers=["panel", "member", "connection", "section", r"$A_g$ (mm²)", r"$r_{min}$ (mm)"],
+    headers=["panel", "member", "connection", "section", r"$A_g$ (mmÂ²)", r"$r_{min}$ (mm)"],
     widths=[2.0, 2.0, 2.2, 2.5, 2.0, 2.0],
     align=["C", "L", "L", "C", "C", "C"], escape=False, longtable_min_rows=1) + r"""
 \noindent\textit{Note: $A_g$ = gross cross-sectional area; $r_{min}$ = minimum radius of gyration.}
@@ -1690,7 +1709,7 @@ End diaphragms at the supports transfer transverse loads to the bearings, restra
 \setlength{\tabcolsep}{6pt}
 """ + render_grouped_report_table(
     "End Diaphragm --- Connection and Section Properties", cb_forces_groups,
-    headers=["panel", "member", "connection", "section", r"$A_g$ (mm²)", r"$r_{min}$ (mm)"],
+    headers=["panel", "member", "connection", "section", r"$A_g$ (mmÂ²)", r"$r_{min}$ (mm)"],
     widths=[2.0, 2.0, 2.2, 2.5, 2.0, 2.0],
     align=["C", "L", "L", "C", "C", "C"], escape=False, longtable_min_rows=1) + r"""
 \noindent\textit{Note: $A_g$ = gross cross-sectional area; $r_{min}$ = minimum radius of gyration.}

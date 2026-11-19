@@ -11,6 +11,7 @@ from osdagbridge.core.utils.common import (
     KEY_TS_NO_OF_GIRDERS,
 )
 
+
 _GROUPED_TABLE_PROBE = False
 _GROUPED_TABLE_BREAKS = set()
 
@@ -30,14 +31,14 @@ def _tex(value):
     s = str(value) if value is not None else ''
     if not s:
         return r''
-    # Normalise non-ASCII glyphs from section designations (e.g. "∠ 100 ⅹ 100ⅹ 10")
+    # Normalise non-ASCII glyphs from section designations (e.g. "âˆ  100 â…¹ 100â…¹ 10")
     # that pdflatex cannot render.
-    for uni, ascii_ in [('∠', 'L'), ('ⅹ', 'x'), ('×', 'x')]:
+    for uni, ascii_ in [('âˆ ', 'L'), ('â…¹', 'x'), ('Ã—', 'x')]:
         s = s.replace(uni, ascii_)
     s = s.replace('\\', r'\textbackslash{}')
     for ch, esc in [('&', r'\&'), ('%', r'\%'), ('$', r'\$'), ('#', r'\#'),
-                    ('{', r'\{'), ('}', r'\}'),          
-                    ('_', r'\_\allowbreak{}'),            
+                    ('{', r'\{'), ('}', r'\}'),
+                    ('_', r'\_\allowbreak{}'),
                     ('~', r'\textasciitilde{}'), ('^', r'\^{}')]:
         s = s.replace(ch, esc)
     s = s.replace(':', r':\allowbreak{}')
@@ -81,7 +82,7 @@ def _table_layout(headers, rows, widths=None, align=None):
         widths = widths[:ncols]
     scale = max_content_width / sum(widths) if sum(widths) > 0 else 1
     widths = [round(w * scale, 2) for w in widths]
-    
+
     if align is None:
         align = ["L"] * ncols
     else:
@@ -323,15 +324,15 @@ def get_girder_entries(input_dict):
     Usage Example:
     --------------------------
     girder_entries = get_girder_entries(bridge.input_dict)
-    
+
     # 1. Fallback handling (if backend hasn't populated keys yet)
     if not girder_entries:
         n = int(bridge.input_dict.get(KEY_TS_NO_OF_GIRDERS, 1))
         girder_entries = [(f"Girder {i}", f"M1") for i in range(1, n + 1)]
-        
+
     # 2. Get total number of girders safely
     n_girders = len(girder_entries)
-    
+
     # 3. Iterate over the girders to build table rows
     for lbl, mid in girder_entries:
         # lbl will be e.g., "G1", mid will be e.g., "G1M1"
@@ -393,7 +394,7 @@ def _fig_embed(path, caption, width=r'\textwidth', height=None, numbered=False):
                 + cap_cmd + r'{\small ' + caption + '}\n'
                 r'\vspace{-0.5em}' + '\n'
                 r'\end{figure}')
-    # fbox placeholder — matches template exactly
+    # fbox placeholder â€” matches template exactly
     return (r'\noindent\fbox{\parbox{0.97\textwidth}{' + '\n'
             r'\textit{[ PLACEHOLDER: ' + caption + r' ]}' + '\n'
             r'}}')
@@ -407,7 +408,7 @@ class ReportChartGenerator:
         self.latex_dir = latex_dir
 
     def _number(self, value):
-        
+
         text = str(value or "").strip()
         if not text or text.upper() in {"N.A.", "NA", "N/A", "---"}:
             return 0.0
@@ -427,15 +428,15 @@ class ReportChartGenerator:
         return 0.0
 
     def _save_bar_chart(self, filename, labels, values, xlabel, ylabel, title, colors):
-       
+
         os.makedirs(self.output_dir, exist_ok=True)
         os.environ.setdefault("MPLCONFIGDIR", os.path.join(self.output_dir, "mplconfig"))
         os.makedirs(os.environ["MPLCONFIGDIR"], exist_ok=True)
-        
+
         matplotlib.use("Agg", force=True)
         matplotlib.rcParams["pdf.fonttype"] = 42
         matplotlib.rcParams["ps.fonttype"] = 42
-        
+
 
         fig, ax = plt.subplots(figsize=(7.0, 3.8), dpi=220)
         bars = ax.bar(labels, values, color=colors, width=0.55)
@@ -456,23 +457,23 @@ class ReportChartGenerator:
         plt.close(fig)
         return (self.latex_dir.rstrip("/\\") + "/" + filename).replace("\\", "/")
 
-    def _save_ur_chart(self, filename, labels, values):
-        
+    def _save_ur_chart(self, filename, labels, values, title="Utilization Ratio"):
+
         os.makedirs(self.output_dir, exist_ok=True)
         os.environ.setdefault("MPLCONFIGDIR", os.path.join(self.output_dir, "mplconfig"))
         os.makedirs(os.environ["MPLCONFIGDIR"], exist_ok=True)
-        
+
         matplotlib.use("Agg", force=True)
         matplotlib.rcParams["pdf.fonttype"] = 42
         matplotlib.rcParams["ps.fonttype"] = 42
-        
+
 
         plot_values = [v if v is not None else 0.0 for v in values]
         colors = ["#b55353" if (v is not None and v > 1.0) else "#6aa84f" if v is not None else "#9e9e9e" for v in values]
         fig, ax = plt.subplots(figsize=(7.2, 3.8), dpi=220)
         bars = ax.bar(labels, plot_values, color=colors, width=0.55)
         ax.axhline(1.0, color="#c00000", linestyle="--", linewidth=1.3, label="UR = 1.0")
-        ax.set_title("Utilization Ratio Summary", fontsize=12, fontweight="bold", pad=10)
+        ax.set_title(title, fontsize=12, fontweight="bold", pad=10)
         ax.set_xlabel("Primary Element", fontsize=10)
         ax.set_ylabel("Utilization Ratio (Demand / Capacity)", fontsize=10)
         ax.grid(axis="y", linestyle="--", linewidth=0.6, alpha=0.35)
@@ -527,48 +528,164 @@ class ReportChartGenerator:
                 if capacity > 0:
                     deck_values.append(demand / capacity)
             deck = max(deck_values) if deck_values else self._max_dcr(output.get("deck_design_results", {}))
+
             cb_values = []
             for pair in bridge.get_cb_pairs():
-                for member in ("diagonal", "chord"):
+                for member in (
+                    "diagonal",
+                    "chord",
+                    "top_chord",
+                    "bottom_chord",
+                ):
                     for force_type in ("compression", "tension"):
-                        n = self._number(bridge.get_cb_efficiency(pair, member, force_type))
+                        n = self._number(
+                            bridge.get_cb_efficiency(pair, member, force_type)
+                        )
                         if n > 0:
                             cb_values.append(n)
-            cross_bracing = max(cb_values) if cb_values else self._max_dcr(output.get("crossbracing_design_results", {}))
-            end_diaphragm = self._max_dcr(output.get("end_diaphragm_design_results", {}))
-            return {"ur_summary": self._save_ur_chart(
-                "utilization_ratio_summary.pdf",
-                ["Steel Plate\nGirders", "Concrete\nDeck Slab", "Cross\nBracing", "End\nDiaphragms"],
-                [steel, deck, cross_bracing, end_diaphragm])}
-        except Exception:
+
+            cross_bracing = (
+                max(cb_values)
+                if cb_values
+                else self._max_dcr(output.get("crossbracing_design_results", {}))
+            )
+
+            end_diaphragm_values = []
+            end_diaphragm_results = output.get("end_diaphragm_design_results", {}) or {}
+            if isinstance(end_diaphragm_results, dict):
+                for pair_results in end_diaphragm_results.values():
+                    if not isinstance(pair_results, dict):
+                        continue
+
+                    for member_results in pair_results.values():
+                        if not isinstance(member_results, dict):
+                            continue
+
+                        for force_type in ("tension", "compression"):
+                            raw_result = member_results.get(force_type) or {}
+                            efficiency = 0.0
+                            if isinstance(raw_result, dict):
+                                for efficiency_key in (
+                                    'Member.efficiency',
+                                    'Optimum.UR',
+                                    'Efficiency',
+                                    'UR',
+                                ):
+                                    raw_efficiency = raw_result.get(efficiency_key)
+                                    if raw_efficiency is not None and raw_efficiency != '':
+                                        efficiency = self._number(raw_efficiency)
+                                        break
+                            if efficiency > 0:
+                                end_diaphragm_values.append(efficiency)
+
+            end_diaphragm = max(end_diaphragm_values) if end_diaphragm_values else None
+            return {
+                "steel": self._save_ur_chart(
+                    "ur_steel_plate_girders.pdf",
+                    ["Steel Plate Girders"],
+                    [steel],
+                    "Steel Plate Girder Utilization Ratio",
+                ),
+                "deck": self._save_ur_chart(
+                    "ur_concrete_deck_slab.pdf",
+                    ["Concrete Deck Slab"],
+                    [deck],
+                    "Concrete Deck Slab Utilization Ratio",
+                ),
+                "cross_bracing": self._save_ur_chart(
+                    "ur_cross_bracing.pdf",
+                    ["Cross Bracing"],
+                    [cross_bracing],
+                    "Cross Bracing Utilization Ratio",
+                ),
+                "end_diaphragm": self._save_ur_chart(
+                    "ur_end_diaphragms.pdf",
+                    ["End Diaphragms"],
+                    [end_diaphragm],
+                    "End Diaphragm Utilization Ratio",
+                ),
+            }
+        except Exception as exc:
+            print(f"Utilization ratio chart generation failed: {exc}")
             return {}
+
+
+    # Existing methods remain unchanged
+
 
     def generate_material_quantity_charts(self, quantities):
+        """Generate separate steel, concrete and reinforcement quantity charts."""
         try:
-            bracing = sum(self._number(quantities.get(key)) for key in (
-                "bracing_top_wt_total", "bracing_bot_wt_total", "bracing_diag_wt_total"
-            ))
-            diaphragm = self._first_number(quantities, (
-                "end_diaphragm_wt_total", "end_diaphragms_wt_total",
-                "steel_end_diaphragm_wt_total", "steel_end_diaphragms_wt_total",
-                "diaphragm_wt_total", "diaphragms_wt_total",
-            ))
-            return {
-                "steel": self._save_bar_chart(
+            quantities = quantities or {}
+
+            def available_value(key):
+                raw = quantities.get(key)
+                if raw is None or str(raw).strip().upper() in {
+                    "", "N.A.", "NA", "N/A", "---"
+                }:
+                    return None
+                return self._number(raw)
+
+            steel_components = (
+                ("Girders", "steel_girders_wt_total"),
+                ("Cross Bracing - Top", "bracing_top_wt_total"),
+                ("Cross Bracing - Bottom", "bracing_bot_wt_total"),
+                ("Cross Bracing - Diagonal", "bracing_diag_wt_total"),
+                ("Bearing Stiffeners", "stiffener_bearing_wt_total"),
+                ("Intermediate Stiffeners", "stiffener_int_wt_total"),
+                ("Connections", "connections_wt_total"),
+                ("Shear Studs", "shear_studs_wt_total"),
+            )
+
+            steel_labels = []
+            steel_values = []
+
+            for label, key in steel_components:
+                value = available_value(key)
+                if value is not None:
+                    steel_labels.append(label)
+                    steel_values.append(value)
+
+            concrete = available_value("concrete_deck_vol_total")
+            reinforcement = available_value("rebar_deck_wt_total")
+
+            charts = {}
+
+            if steel_labels:
+                charts["steel"] = self._save_bar_chart(
                     "material_steel_quantities.pdf",
-                    ["Girders", "Cross Bracing", "End Diaphragms"],
-                    [self._number(quantities.get("steel_girders_wt_total")), bracing, diaphragm],
-                    "Structural Steel Component", "Weight (t)", "Structural Steel Tonnage",
-                    ["#3b6ea8", "#6aa84f", "#c27c3a"]),
-                "concrete_rebar": self._save_bar_chart(
-                    "material_concrete_rebar_quantities.pdf",
-                    ["Concrete Volume", "Reinforcement Steel"],
-                    [self._number(quantities.get("concrete_deck_vol_total")),
-                     self._number(quantities.get("rebar_deck_wt_total"))],
-                    "Material Quantity Type", r"Quantity (m$^3$ / t)", "Concrete Volume and Reinforcement Steel",
-                    ["#7a9cc6", "#b55353"]),
-            }
-        except Exception:
+                    steel_labels,
+                    steel_values,
+                    "Structural Steel Component",
+                    "Weight (t)",
+                    "Structural Steel Tonnage",
+                    ["#3b6ea8", "#6aa84f", "#c27c3a", "#7a9cc6",
+                     "#b55353", "#8e7cc3", "#76a5af", "#999999"],
+                )
+
+            if concrete is not None:
+                charts["concrete"] = self._save_bar_chart(
+                    "material_concrete_quantity.pdf",
+                    ["Deck Concrete"],
+                    [concrete],
+                    "Material",
+                    r"Volume (m$^3$)",
+                    "Concrete Deck Volume",
+                    ["#7a9cc6"],
+                )
+
+            if reinforcement is not None:
+                charts["reinforcement"] = self._save_bar_chart(
+                    "material_reinforcement_quantity.pdf",
+                    ["Deck Reinforcement"],
+                    [reinforcement],
+                    "Material",
+                    "Weight (t)",
+                    "Reinforcement Steel Weight",
+                    ["#b55353"],
+                )
+
+            return charts
+        except Exception as exc:
+            print(f"Material quantity chart generation failed: {exc}")
             return {}
-
-
