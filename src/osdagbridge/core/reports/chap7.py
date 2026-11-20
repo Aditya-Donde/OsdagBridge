@@ -12,23 +12,44 @@ def _qty_header(text):
 
 
 def ch7_quantities(input_dict, output_dict=None, chart_paths=None):
-    if chart_paths is None and isinstance(output_dict, dict) and (
-            "steel" in output_dict or "concrete_rebar" in output_dict):
+
+    if chart_paths is None and isinstance(output_dict, dict) and any(
+        key in output_dict
+        for key in ("steel", "concrete", "reinforcement", "concrete_rebar")
+    ):
         chart_paths, output_dict = output_dict, None
+
     quantities = (output_dict or {}).get("chapter7_material_quantities", {})
     chart_paths = chart_paths or {}
+
     chart_figures = ""
     if chart_paths:
-        chart_figures = (
-            "\n\\vspace{1em}\n"
-            + _fig_embed(chart_paths.get("steel"),
-                         "Structural Steel Tonnage Summary",
-                         width=r"0.82\textwidth", numbered=True)
-            + "\n\\vspace{0.5em}\n"
-            + _fig_embed(chart_paths.get("concrete_rebar"),
-                         "Concrete Volume and Reinforcement Steel Summary",
-                         width=r"0.82\textwidth", numbered=True)
+        figures = []
+
+        chart_definitions = (
+            ("steel", "Structural Steel Tonnage Summary"),
+            ("concrete", "Concrete Deck Volume Summary"),
+            ("reinforcement", "Deck Reinforcement Steel Summary"),
         )
+
+        for key, caption in chart_definitions:
+            path = chart_paths.get(key)
+            if path:
+                figures.append(
+                    _fig_embed(
+                        path,
+                        caption,
+                        width=r"0.82\textwidth",
+                        numbered=True,
+                    )
+                )
+
+        if figures:
+            chart_figures = (
+                "\n\\vspace{1em}\n"
+                + "\n\\vspace{0.5em}\n".join(figures)
+            )
+
     rows = [
         ["1", "Structural Steel (IS 2062) for Girders", _wrap_multiply(quantities.get("steel_girders_vol_formula", "N.A.")), quantities.get("steel_girders_qty", "N.A."), quantities.get("steel_girders_vol_total", "N.A."), quantities.get("steel_girders_wt_single", "N.A."), quantities.get("steel_girders_wt_total", "N.A.")],
         ["2(a)", "Cross Bracing - Top Chord", _wrap_multiply(quantities.get("bracing_top_vol_formula", "N.A.")), quantities.get("bracing_top_qty", "N.A."), quantities.get("bracing_top_vol_total", "N.A."), quantities.get("bracing_top_wt_single", "N.A."), quantities.get("bracing_top_wt_total", "N.A.")],
