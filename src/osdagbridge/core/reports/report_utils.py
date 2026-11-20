@@ -523,8 +523,18 @@ class ReportChartGenerator:
                 ("deck.report.wk_bot", "deck.report.wk_limit"),
                 ("deck.report.wk_top", "deck.report.wk_limit"),
             ):
-                demand = self._number(deck_rpt.get(demand_key))
-                capacity = self._number(deck_rpt.get(capacity_key))
+                raw_demand = deck_rpt.get(demand_key)
+                raw_capacity = deck_rpt.get(capacity_key)
+                missing = {"", "N.A.", "NA", "N/A", "---"}
+                if (
+                    raw_demand is None
+                    or str(raw_demand).strip().upper() in missing
+                    or raw_capacity is None
+                    or str(raw_capacity).strip().upper() in missing
+                ):
+                    continue
+                demand = self._number(raw_demand)
+                capacity = self._number(raw_capacity)
                 if capacity > 0:
                     deck_values.append(demand / capacity)
             deck = max(deck_values) if deck_values else self._max_dcr(output.get("deck_design_results", {}))
