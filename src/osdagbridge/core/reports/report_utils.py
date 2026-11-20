@@ -31,9 +31,9 @@ def _tex(value):
     s = str(value) if value is not None else ''
     if not s:
         return r''
-    # Normalise non-ASCII glyphs from section designations (e.g. "âˆ  100 â…¹ 100â…¹ 10")
+    # Normalise non-ASCII glyphs from section designations (e.g. "∠ 100 ⅹ 100ⅹ 10")
     # that pdflatex cannot render.
-    for uni, ascii_ in [('âˆ ', 'L'), ('â…¹', 'x'), ('Ã—', 'x')]:
+    for uni, ascii_ in [('∠', 'L'), ('ⅹ', 'x'), ('×', 'x')]:
         s = s.replace(uni, ascii_)
     s = s.replace('\\', r'\textbackslash{}')
     for ch, esc in [('&', r'\&'), ('%', r'\%'), ('$', r'\$'), ('#', r'\#'),
